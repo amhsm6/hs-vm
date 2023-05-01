@@ -1,18 +1,14 @@
-import Action
-import Instruction
+import Core
 
-program :: [Inst]
-program = [ InstPush 1
-          , InstPush 2
-          , InstAdd
-          , InstPush 3
-          , InstAdd
-          , InstPrint
-          ]
+prog :: [Inst]
+prog = [ InstPush 0
+       , InstPush 1
+       , InstAdd
+       , InstPrint
+       , InstJmp 1
+       ]
 
 main :: IO ()
-main = do
-    let act = mapM_ execInst program
-    case runAction act initial of
-        Right (finalState, _) -> io finalState
-        Left e -> putStrLn $ "ERROR: " ++ show e
+main = case execProg 100 prog of
+           Right io -> io
+           Left e -> putStrLn $ "ERROR: " ++ show e
