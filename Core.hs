@@ -1,7 +1,5 @@
 module Core where
 
-import Control.Monad
-
 stackCapacity :: Int
 stackCapacity = 1024 
 
@@ -9,6 +7,7 @@ data MachineState = MachineState { io :: IO ()
                                  , stack :: [Int]
                                  , ip :: Int
                                  , program :: [Inst]
+                                 , halted :: Bool
                                  }
 
 data MachineError = StackUnderflow
@@ -49,6 +48,9 @@ next = get >>= \s -> put $ s { ip = ip s + 1 }
 
 jmp :: Int -> Action ()
 jmp x = get >>= \s -> put $ s { ip = x }
+
+hlt :: Action ()
+hlt = get >>= \s -> put $ s { halted = True }
 
 push :: Int -> Action ()
 push x = getStack >>= push'
@@ -119,15 +121,16 @@ exec (InstMod) = do
     push $ x `mod` y
     next
 exec (InstJmp x) = jmp x
-exec (InstHlt) = pure ()
+exec (InstHlt) = hlt
 
 initial :: [Inst] -> MachineState
 initial program = MachineState { io = pure ()
                                , stack = []
                                , ip = 0
                                , program = program
+                               , halted = False
                                }
 
-execProg :: Int -> [Inst] -> Either MachineError (IO ())
-execProg limit prog = runAction act (initial prog) >>= pure . snd
-    where act = replicateM_ limit (fetch >>= exec) >> getIO
+execProg :: [Inst] -> Either MachineError (IO ())
+execProg prog = runAction act (initial prog) >>= pure . snd
+    where act = fetch >>= exec >> get >>= \s -> if halted s then getIO else act
