@@ -51,30 +51,40 @@ data InstParamDef = IntParamDef
 
 parseParam :: InstParamDef -> Parser InstParam
 parseParam IntParamDef = some digit >>= pure . ParamInt . read
-parseParam LabelParamDef = (some $ charF (not . isSpace)) >>= pure . ParamLabel
+parseParam LabelParamDef = some (charF $ \c -> isAlphaNum c || c == '_') >>= pure . ParamLabel
+
+data Token = TokenInst Inst
+           | TokenLabel String
+           deriving Show
 
 data InstDef = InstDef String [InstParamDef] ([InstParam] -> Inst)
 
-parseInst :: InstDef -> Parser Inst
+parseInst :: InstDef -> Parser Token
 parseInst (InstDef name params constructor) = do
     many ws
     string name
     parsedParams <- mapM (\param -> some ws >> parseParam param) params
-    pure $ constructor parsedParams
+    pure $ TokenInst $ constructor parsedParams
 
-instruction :: Parser Inst
+instruction :: Parser Token
 instruction = foldl (<|>) empty $ map parseInst $
-    [ InstDef "push"  [IntParamDef] $ \[ParamInt x] -> InstPush x
-    , InstDef "pop"   []            $ const InstPop
-    , InstDef "print" []            $ const InstPrint
-    , InstDef "add"   []            $ const InstAdd
-    , InstDef "sub"   []            $ const InstSub
-    , InstDef "mul"   []            $ const InstMul
-    , InstDef "div"   []            $ const InstDiv
-    , InstDef "mod"   []            $ const InstMod
-    , InstDef "jmp"   [IntParamDef] $ \[ParamInt x] -> InstJmp x
-    , InstDef "hlt"   []            $ const InstHlt
+    [ InstDef "push"  [IntParamDef]   $ \[ParamInt x] -> InstPush x
+    , InstDef "pop"   []              $ const InstPop
+    , InstDef "print" []              $ const InstPrint
+    , InstDef "add"   []              $ const InstAdd
+    , InstDef "sub"   []              $ const InstSub
+    , InstDef "mul"   []              $ const InstMul
+    , InstDef "div"   []              $ const InstDiv
+    , InstDef "mod"   []              $ const InstMod
+    , InstDef "jmp"   [LabelParamDef] $ \[ParamLabel x] -> InstJmp x
+    , InstDef "hlt"   []              $ const InstHlt
     ]
 
-parseProgram :: Parser [Inst]
-parseProgram = many $ instruction >>= \inst -> some ws >> pure inst
+label :: Parser Token
+label = do
+    label <- some $ charF $ \c -> isAlphaNum c || c == '_'
+    char ':'
+    pure $ TokenLabel label
+
+parseProgram :: Parser [Token]
+parseProgram = many $ (instruction <|> label) >>= \token -> some ws >> pure token

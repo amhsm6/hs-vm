@@ -1,8 +1,18 @@
 import System.Exit
 import System.Environment
+import Data.List
 
 import Core
 import Parser
+
+processLabels :: [Token] -> ([Inst], [(String, Int)])
+processLabels prog = (map (\(_, TokenInst i) -> i) insts, map (\(addr, TokenLabel l) -> (l, addr)) labels)
+    where (insts, labels) = partition isInst $ tail $ scanl address (0, TokenLabel "") prog
+          isInst (_, (TokenInst _)) = True
+          isInst (_, (TokenLabel _)) = False
+          address (addr, _) t@(TokenInst _) = (addr + 1, t)
+          address (addr, _) t@(TokenLabel _) = (addr, t)
+
 
 main :: IO ()
 main = do
@@ -16,10 +26,13 @@ main = do
 
     input <- readFile $ head args 
 
-    case runParser parseProgram input of
-        Just (_, prog) -> case execProg prog of
-                              Right io -> io
-                              Left e -> putStrLn $ "ERROR: " ++ show e
-        Nothing -> do
-            putStrLn "parse error"
-            exitFailure
+    tokens <- case runParser parseProgram input of
+                  Just (_, tokens) -> pure tokens
+                  Nothing -> putStrLn "parse error" >> exitFailure
+
+    let (prog, labels) = processLabels tokens
+
+    case execProg prog labels of
+        Right io -> io
+        Left e -> putStrLn $ "ERROR: " ++ show e
+

@@ -7,6 +7,7 @@ data MachineState = MachineState { io :: IO ()
                                  , stack :: [Int]
                                  , ip :: Int
                                  , program :: [Inst]
+                                 , labels :: [(String, Int)]
                                  , halted :: Bool
                                  }
 
@@ -14,6 +15,7 @@ data MachineError = StackUnderflow
                   | StackOverflow
                   | DivByZeroError
                   | IllegalInstAccess
+                  | LabelNotFoundError
                   deriving Show
 
 newtype Action a = Action { runAction :: MachineState -> Either MachineError (MachineState, a) }
@@ -84,7 +86,7 @@ data Inst = InstPush Int
           | InstMul
           | InstDiv
           | InstMod
-          | InstJmp Int
+          | InstJmp String
           | InstHlt
           deriving Show
 
@@ -127,17 +129,20 @@ exec InstMod = do
     x <- pop
     push $ x `mod` y
     next
-exec (InstJmp x) = jmp x
+exec (InstJmp l) = get >>= \s -> case lookup l $ labels s of
+                                     Just addr -> jmp addr
+                                     Nothing -> die LabelNotFoundError
 exec InstHlt = hlt
 
-initial :: [Inst] -> MachineState
-initial program = MachineState { io = pure ()
-                               , stack = []
-                               , ip = 0
-                               , program = program
-                               , halted = False
-                               }
+initial :: [Inst] -> [(String, Int)] -> MachineState
+initial program labels = MachineState { io = pure ()
+                                      , stack = []
+                                      , ip = 0
+                                      , program = program
+                                      , labels = labels
+                                      , halted = False
+                                      }
 
-execProg :: [Inst] -> Either MachineError (IO ())
-execProg prog = runAction act (initial prog) >>= pure . snd
+execProg :: [Inst] -> [(String, Int)] -> Either MachineError (IO ())
+execProg prog labels = runAction act (initial prog labels) >>= pure . snd
     where act = fetch >>= exec >> get >>= \s -> if halted s then getIO else act
