@@ -86,42 +86,49 @@ data Inst = InstPush Int
           | InstMod
           | InstJmp Int
           | InstHlt
+          deriving Show
 
 exec :: Inst -> Action ()
 exec (InstPush x) = push x >> next
-exec (InstPop) = pop >> next
-exec (InstPrint) = get >>= \s -> let newio = print $ stack s
-                                     oldio = io s
-                                 in putIO (oldio >> newio) >> next
-exec (InstAdd) = do
+exec InstPop = pop >> next
+exec InstPrint = do
+    state <- get
+    let oldio = io state
+
+    elem <- pop
+    let newio = print elem
+    
+    putIO (oldio >> newio)
+    next
+exec InstAdd = do
     y <- pop
     x <- pop
     push $ x + y
     next
-exec (InstSub) = do
+exec InstSub = do
     y <- pop
     x <- pop
     push $ x - y
     next
-exec (InstMul) = do
+exec InstMul = do
     y <- pop
     x <- pop
     push $ x * y
     next
-exec (InstDiv) = do
+exec InstDiv = do
     y <- pop
     if y == 0 then die DivByZeroError else pure ()
     x <- pop
     push $ x `div` y
     next
-exec (InstMod) = do
+exec InstMod = do
     y <- pop
     if y == 0 then die DivByZeroError else pure ()
     x <- pop
     push $ x `mod` y
     next
 exec (InstJmp x) = jmp x
-exec (InstHlt) = hlt
+exec InstHlt = hlt
 
 initial :: [Inst] -> MachineState
 initial program = MachineState { io = pure ()
