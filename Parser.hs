@@ -78,6 +78,7 @@ instruction = foldl (<|>) empty $ map parseInst $
     , InstDef "mod"   []              $ const InstMod
     , InstDef "jmp"   [LabelParamDef] $ \[ParamLabel x] -> InstJmp x
     , InstDef "hlt"   []              $ const InstHlt
+    , InstDef "dup"   []              $ const InstDup
     ]
 
 label :: Parser Token

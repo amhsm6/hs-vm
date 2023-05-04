@@ -35,4 +35,3 @@ main = do
     case execProg prog labels of
         Right io -> io
         Left e -> putStrLn $ "ERROR: " ++ show e
-

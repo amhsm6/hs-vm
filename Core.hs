@@ -3,12 +3,16 @@ module Core where
 stackCapacity :: Int
 stackCapacity = 1024 
 
+executionLimit :: Int
+executionLimit = 10 ^ 2
+
 data MachineState = MachineState { io :: IO ()
                                  , stack :: [Int]
                                  , ip :: Int
                                  , program :: [Inst]
                                  , labels :: [(String, Int)]
                                  , halted :: Bool
+                                 , instsExecuted :: Int
                                  }
 
 data MachineError = StackUnderflow
@@ -42,8 +46,11 @@ die err = Action $ \_ -> Left err
 
 fetch :: Action Inst
 fetch = get >>= \s -> let x = ip s
-                      in if x < 0 || x >= length (program s) then die IllegalInstAccess >> pure InstHlt
-                                                             else pure $ program s !! x
+                          y = instsExecuted s
+                      in if x < 0 || x >= length (program s) then
+                             die IllegalInstAccess >> pure InstHlt
+                         else
+                             put (s { instsExecuted = y + 1 }) >> pure (program s !! x)
 
 next :: Action ()
 next = get >>= \s -> put $ s { ip = ip s + 1 }
@@ -88,6 +95,7 @@ data Inst = InstPush Int
           | InstMod
           | InstJmp String
           | InstHlt
+          | InstDup
           deriving Show
 
 exec :: Inst -> Action ()
@@ -133,6 +141,7 @@ exec (InstJmp l) = get >>= \s -> case lookup l $ labels s of
                                      Just addr -> jmp addr
                                      Nothing -> die LabelNotFoundError
 exec InstHlt = hlt
+exec InstDup = pop >>= \x -> push x >> push x >> next
 
 initial :: [Inst] -> [(String, Int)] -> MachineState
 initial program labels = MachineState { io = pure ()
@@ -141,8 +150,15 @@ initial program labels = MachineState { io = pure ()
                                       , program = program
                                       , labels = labels
                                       , halted = False
+                                      , instsExecuted = 0
                                       }
 
 execProg :: [Inst] -> [(String, Int)] -> Either MachineError (IO ())
 execProg prog labels = runAction act (initial prog labels) >>= pure . snd
-    where act = fetch >>= exec >> get >>= \s -> if halted s then getIO else act
+    where act = do
+              fetch >>= exec
+              s <- get
+              if halted s || instsExecuted s > executionLimit then
+                  getIO
+              else
+                  act
