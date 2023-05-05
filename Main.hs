@@ -32,6 +32,7 @@ main = do
 
     let (prog, labels) = processLabels tokens
 
-    case execProg prog labels of
-        Right io -> io
+    res <- execProg prog labels
+    case res of
+        Right _ -> pure ()
         Left e -> putStrLn $ "ERROR: " ++ show e

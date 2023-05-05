@@ -1,5 +1,7 @@
 module Core where
 
+import Control.Monad.IO.Class
+
 stackCapacity :: Int
 stackCapacity = 1024 
 
@@ -22,27 +24,30 @@ data MachineError = StackUnderflow
                   | LabelNotFoundError
                   deriving Show
 
-newtype Action a = Action { runAction :: MachineState -> Either MachineError (MachineState, a) }
+newtype Action a = Action { runAction :: MachineState -> IO (Either MachineError (MachineState, a)) }
 
 instance Monad Action where
     return = pure
-    (Action a) >>= g = Action $ \s -> a s >>= \(s', x) -> runAction (g x) s'
-
+    (Action f) >>= g = Action $ \s -> f s >>= \res -> case res of Right (s', x) -> runAction (g x) s'
+                                                                  Left e -> pure $ Left e
 instance Applicative Action where
-    pure x = Action $ \s -> Right (s, x)
+    pure x = Action $ \s -> pure $ Right (s, x)
     a1 <*> a2 = a1 >>= \f -> a2 >>= pure . f
 
 instance Functor Action where
     fmap f a = a >>= pure . f
 
+instance MonadIO Action where   
+    liftIO io = Action $ \s -> io >>= pure . Right . (s,)
+
 get :: Action MachineState
-get = Action $ \s -> Right (s, s)
+get = Action $ \s -> pure $ Right (s, s)
 
 put :: MachineState -> Action ()
-put x = Action $ \_ -> Right (x, ())
+put x = Action $ \_ -> pure $ Right (x, ())
 
 die :: MachineError -> Action ()
-die err = Action $ \_ -> Left err
+die err = Action $ \_ -> pure $ Left err
 
 fetch :: Action Inst
 fetch = get >>= \s -> let x = ip s
@@ -79,12 +84,6 @@ getStack = get >>= pure . stack
 putStack :: [Int] -> Action ()
 putStack x = get >>= \s -> put $ s { stack = x }
 
-getIO :: Action (IO ())
-getIO = get >>= pure . io
-
-putIO :: (IO ()) -> Action ()
-putIO x = get >>= \s -> put $ s { io = x }
-
 data Inst = InstPush Int
           | InstPop
           | InstPrint
@@ -96,20 +95,11 @@ data Inst = InstPush Int
           | InstJmp String
           | InstHlt
           | InstDup
-          deriving Show
 
 exec :: Inst -> Action ()
 exec (InstPush x) = push x >> next
 exec InstPop = pop >> next
-exec InstPrint = do
-    state <- get
-    let oldio = io state
-
-    elem <- pop
-    let newio = print elem
-    
-    putIO (oldio >> newio)
-    next
+exec InstPrint = pop >>= liftIO . print >> next
 exec InstAdd = do
     y <- pop
     x <- pop
@@ -153,12 +143,12 @@ initial program labels = MachineState { io = pure ()
                                       , instsExecuted = 0
                                       }
 
-execProg :: [Inst] -> [(String, Int)] -> Either MachineError (IO ())
-execProg prog labels = runAction act (initial prog labels) >>= pure . snd
+execProg :: [Inst] -> [(String, Int)] -> IO (Either MachineError (MachineState, ()))
+execProg prog labels = runAction act (initial prog labels)
     where act = do
               fetch >>= exec
               s <- get
               if halted s || instsExecuted s > executionLimit then
-                  getIO
+                  pure ()
               else
                   act

@@ -2,6 +2,5 @@
 loop:
     push 1
     add
-    dup
-    print
+    dup print
     jmp loop

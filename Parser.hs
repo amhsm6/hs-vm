@@ -55,7 +55,6 @@ parseParam LabelParamDef = some (charF $ \c -> isAlphaNum c || c == '_') >>= pur
 
 data Token = TokenInst Inst
            | TokenLabel String
-           deriving Show
 
 data InstDef = InstDef String [InstParamDef] ([InstParam] -> Inst)
 
