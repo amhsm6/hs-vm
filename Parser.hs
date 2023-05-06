@@ -1,6 +1,5 @@
 module Parser where
 
-import Control.Monad
 import Control.Applicative
 import Data.Char
 
@@ -69,22 +68,24 @@ instruction :: Parser Token
 instruction = foldl (<|>) empty $ map parseInst $
     [ InstDef "push"  [IntParamDef]   $ \[ParamInt x] -> InstPush x
     , InstDef "pop"   []              $ const InstPop
+    , InstDef "dup"   []              $ const InstDup
+    , InstDef "hlt"   []              $ const InstHlt
+    , InstDef "jmp"   [LabelParamDef] $ \[ParamLabel x] -> InstJmp x
+    , InstDef "jz"    [LabelParamDef] $ \[ParamLabel x] -> InstJmpZero x
     , InstDef "print" []              $ const InstPrint
     , InstDef "add"   []              $ const InstAdd
     , InstDef "sub"   []              $ const InstSub
     , InstDef "mul"   []              $ const InstMul
     , InstDef "div"   []              $ const InstDiv
     , InstDef "mod"   []              $ const InstMod
-    , InstDef "jmp"   [LabelParamDef] $ \[ParamLabel x] -> InstJmp x
-    , InstDef "hlt"   []              $ const InstHlt
-    , InstDef "dup"   []              $ const InstDup
+    , InstDef "eq"    []              $ const InstEq
     ]
 
 label :: Parser Token
 label = do
-    label <- some $ charF $ \c -> isAlphaNum c || c == '_'
+    name <- some $ charF $ \c -> isAlphaNum c || c == '_'
     char ':'
-    pure $ TokenLabel label
+    pure $ TokenLabel name
 
 parseProgram :: Parser [Token]
 parseProgram = many $ (instruction <|> label) >>= \token -> some ws >> pure token

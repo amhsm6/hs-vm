@@ -8,13 +8,13 @@ stackCapacity = 1024
 executionLimit :: Int
 executionLimit = 10 ^ 2
 
-data MachineState = MachineState { io :: IO ()
-                                 , stack :: [Int]
+data MachineState = MachineState { stack :: [Int]
                                  , ip :: Int
                                  , program :: [Inst]
                                  , labels :: [(String, Int)]
                                  , halted :: Bool
                                  , instsExecuted :: Int
+                                 , zf :: Int
                                  }
 
 data MachineError = StackUnderflow
@@ -63,6 +63,11 @@ next = get >>= \s -> put $ s { ip = ip s + 1 }
 jmp :: Int -> Action ()
 jmp x = get >>= \s -> put $ s { ip = x }
 
+jz :: Int -> Action ()
+jz x = get >>= \s -> case zf s of 1 -> jmp x
+                                  0 -> next
+                                  _ -> undefined
+
 hlt :: Action ()
 hlt = get >>= \s -> put $ s { halted = True }
 
@@ -78,6 +83,12 @@ pop = getStack >>= pop'
               | null s = die StackUnderflow >> pure 0
               | otherwise = putStack (init s) >> pure (last s)
 
+sez :: Action ()
+sez = get >>= \s -> put $ s { zf = 1 }
+
+clz :: Action ()
+clz = get >>= \s -> put $ s { zf = 0 }
+
 getStack :: Action [Int]
 getStack = get >>= pure . stack
 
@@ -86,19 +97,29 @@ putStack x = get >>= \s -> put $ s { stack = x }
 
 data Inst = InstPush Int
           | InstPop
+          | InstDup
+          | InstHlt
+          | InstJmp String
+          | InstJmpZero String
           | InstPrint
           | InstAdd
           | InstSub
           | InstMul
           | InstDiv
           | InstMod
-          | InstJmp String
-          | InstHlt
-          | InstDup
+          | InstEq
 
 exec :: Inst -> Action ()
 exec (InstPush x) = push x >> next
 exec InstPop = pop >> next
+exec InstDup = pop >>= \x -> push x >> push x >> next
+exec (InstJmp l) = get >>= \s -> case lookup l $ labels s of
+                                     Just addr -> jmp addr
+                                     Nothing -> die LabelNotFoundError
+exec (InstJmpZero l) = get >>= \s -> case lookup l $ labels s of
+                                         Just addr -> jz addr
+                                         Nothing -> die LabelNotFoundError
+exec InstHlt = hlt
 exec InstPrint = pop >>= liftIO . print >> next
 exec InstAdd = do
     y <- pop
@@ -127,24 +148,27 @@ exec InstMod = do
     x <- pop
     push $ x `mod` y
     next
-exec (InstJmp l) = get >>= \s -> case lookup l $ labels s of
-                                     Just addr -> jmp addr
-                                     Nothing -> die LabelNotFoundError
-exec InstHlt = hlt
-exec InstDup = pop >>= \x -> push x >> push x >> next
+exec InstEq = do
+    y <- pop
+    x <- pop
+    if x == y then
+        sez
+    else
+        clz
+    next
 
 initial :: [Inst] -> [(String, Int)] -> MachineState
-initial program labels = MachineState { io = pure ()
-                                      , stack = []
+initial program labels = MachineState { stack = []
                                       , ip = 0
                                       , program = program
                                       , labels = labels
                                       , halted = False
                                       , instsExecuted = 0
+                                      , zf = 0
                                       }
 
 execProg :: [Inst] -> [(String, Int)] -> IO (Either MachineError (MachineState, ()))
-execProg prog labels = runAction act (initial prog labels)
+execProg prog labels = runAction act $ initial prog labels
     where act = do
               fetch >>= exec
               s <- get
