@@ -68,6 +68,11 @@ jz x = get >>= \s -> case zf s of 1 -> jmp x
                                   0 -> next
                                   _ -> undefined
 
+jnz :: Int -> Action ()
+jnz x = get >>= \s -> case zf s of 0 -> jmp x
+                                   1 -> next
+                                   _ -> undefined
+
 hlt :: Action ()
 hlt = get >>= \s -> put $ s { halted = True }
 
@@ -101,13 +106,18 @@ data Inst = InstPush Int
           | InstHlt
           | InstJmp String
           | InstJmpZero String
+          | InstJmpNoZero String
           | InstPrint
           | InstAdd
           | InstSub
           | InstMul
           | InstDiv
           | InstMod
+          | InstGt
+          | InstGe
           | InstEq
+          | InstLe
+          | InstLt
 
 exec :: Inst -> Action ()
 exec (InstPush x) = push x >> next
@@ -119,6 +129,9 @@ exec (InstJmp l) = get >>= \s -> case lookup l $ labels s of
 exec (InstJmpZero l) = get >>= \s -> case lookup l $ labels s of
                                          Just addr -> jz addr
                                          Nothing -> die LabelNotFoundError
+exec (InstJmpNoZero l) = get >>= \s -> case lookup l $ labels s of
+                                           Just addr -> jnz addr
+                                           Nothing -> die LabelNotFoundError
 exec InstHlt = hlt
 exec InstPrint = pop >>= liftIO . print >> next
 exec InstAdd = do
@@ -148,10 +161,42 @@ exec InstMod = do
     x <- pop
     push $ x `mod` y
     next
+exec InstGt = do
+    y <- pop
+    x <- pop
+    if x > y then
+        sez
+    else
+        clz
+    next
+exec InstGe = do
+    y <- pop
+    x <- pop
+    if x >= y then
+        sez
+    else
+        clz
+    next
 exec InstEq = do
     y <- pop
     x <- pop
     if x == y then
+        sez
+    else
+        clz
+    next
+exec InstLe = do
+    y <- pop
+    x <- pop
+    if x <= y then
+        sez
+    else
+        clz
+    next
+exec InstLt = do
+    y <- pop
+    x <- pop
+    if x < y then
         sez
     else
         clz

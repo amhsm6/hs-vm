@@ -72,13 +72,18 @@ instruction = foldl (<|>) empty $ map parseInst $
     , InstDef "hlt"   []              $ const InstHlt
     , InstDef "jmp"   [LabelParamDef] $ \[ParamLabel x] -> InstJmp x
     , InstDef "jz"    [LabelParamDef] $ \[ParamLabel x] -> InstJmpZero x
+    , InstDef "jnz"   [LabelParamDef] $ \[ParamLabel x] -> InstJmpNoZero x
     , InstDef "print" []              $ const InstPrint
     , InstDef "add"   []              $ const InstAdd
     , InstDef "sub"   []              $ const InstSub
     , InstDef "mul"   []              $ const InstMul
     , InstDef "div"   []              $ const InstDiv
     , InstDef "mod"   []              $ const InstMod
+    , InstDef "gt"    []              $ const InstGt
+    , InstDef "ge"    []              $ const InstGe
     , InstDef "eq"    []              $ const InstEq
+    , InstDef "le"    []              $ const InstLe
+    , InstDef "lt"    []              $ const InstLt
     ]
 
 label :: Parser Token
