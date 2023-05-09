@@ -27,8 +27,8 @@ main = do
     input <- readFile $ head args 
 
     tokens <- case runParser parseProgram input of
-                  Just (_, tokens) -> pure tokens
-                  Nothing -> putStrLn "parse error" >> exitFailure
+                  Just ([], tokens) -> pure tokens
+                  _ -> putStrLn "parse error" >> exitFailure
 
     let (prog, labels) = processLabels tokens
 
