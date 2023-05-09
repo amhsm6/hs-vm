@@ -1,13 +1,12 @@
-    push 0
 loop:
-    push 1
-    add
+    pushf 1
+    pushf 0
+    divf
 
     dup print
 
     dup
-    push 10
-    lt
+    eqf
     jz loop
 
     hlt

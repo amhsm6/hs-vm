@@ -6,12 +6,18 @@ stackCapacity :: Int
 stackCapacity = 1024 
 
 executionLimit :: Int
-executionLimit = 10 ^ 2
+executionLimit = 10 ^ 3
 
-data MachineState = MachineState { stack :: [Int]
-                                 , ip :: Int
+data Frame = FrameInt Int
+           | FrameFloat Float
+           deriving Show
+
+type Address = Int
+
+data MachineState = MachineState { stack :: [Frame]
+                                 , ip :: Address
                                  , program :: [Inst]
-                                 , labels :: [(String, Int)]
+                                 , labels :: [(String, Address)]
                                  , halted :: Bool
                                  , instsExecuted :: Int
                                  , zf :: Int
@@ -22,6 +28,7 @@ data MachineError = StackUnderflow
                   | DivByZeroError
                   | IllegalInstAccess
                   | LabelNotFoundError
+                  | SomeError String
                   deriving Show
 
 newtype Action a = Action { runAction :: MachineState -> IO (Either MachineError (MachineState, a)) }
@@ -40,35 +47,38 @@ instance Functor Action where
 instance MonadIO Action where   
     liftIO io = Action $ \s -> io >>= pure . Right . (s,)
 
+instance MonadFail Action where
+    fail msg = die $ SomeError msg
+
 get :: Action MachineState
 get = Action $ \s -> pure $ Right (s, s)
 
 put :: MachineState -> Action ()
 put x = Action $ \_ -> pure $ Right (x, ())
 
-die :: MachineError -> Action ()
+die :: MachineError -> Action a
 die err = Action $ \_ -> pure $ Left err
 
 fetch :: Action Inst
 fetch = get >>= \s -> let x = ip s
                           y = instsExecuted s
                       in if x < 0 || x >= length (program s) then
-                             die IllegalInstAccess >> pure InstHlt
+                             die IllegalInstAccess
                          else
                              put (s { instsExecuted = y + 1 }) >> pure (program s !! x)
 
 next :: Action ()
 next = get >>= \s -> put $ s { ip = ip s + 1 }
 
-jmp :: Int -> Action ()
+jmp :: Address -> Action ()
 jmp x = get >>= \s -> put $ s { ip = x }
 
-jz :: Int -> Action ()
+jz :: Address -> Action ()
 jz x = get >>= \s -> case zf s of 1 -> jmp x
                                   0 -> next
                                   _ -> undefined
 
-jnz :: Int -> Action ()
+jnz :: Address -> Action ()
 jnz x = get >>= \s -> case zf s of 0 -> jmp x
                                    1 -> next
                                    _ -> undefined
@@ -76,16 +86,16 @@ jnz x = get >>= \s -> case zf s of 0 -> jmp x
 hlt :: Action ()
 hlt = get >>= \s -> put $ s { halted = True }
 
-push :: Int -> Action ()
+push :: Frame -> Action ()
 push x = getStack >>= push'
     where push' s
               | length s == stackCapacity = die StackOverflow
               | otherwise = putStack $ s ++ [x]
 
-pop :: Action Int
+pop :: Action Frame
 pop = getStack >>= pop'
     where pop' s
-              | null s = die StackUnderflow >> pure 0
+              | null s = die StackUnderflow
               | otherwise = putStack (init s) >> pure (last s)
 
 sez :: Action ()
@@ -94,13 +104,14 @@ sez = get >>= \s -> put $ s { zf = 1 }
 clz :: Action ()
 clz = get >>= \s -> put $ s { zf = 0 }
 
-getStack :: Action [Int]
+getStack :: Action [Frame]
 getStack = get >>= pure . stack
 
-putStack :: [Int] -> Action ()
+putStack :: [Frame] -> Action ()
 putStack x = get >>= \s -> put $ s { stack = x }
 
-data Inst = InstPush Int
+data Inst = InstPushI Int
+          | InstPushF Float
           | InstPop
           | InstDup
           | InstHlt
@@ -108,22 +119,32 @@ data Inst = InstPush Int
           | InstJmpZero String
           | InstJmpNoZero String
           | InstPrint
-          | InstAdd
-          | InstSub
-          | InstMul
-          | InstDiv
-          | InstMod
-          | InstGt
-          | InstGe
-          | InstEq
-          | InstLe
-          | InstLt
+          | InstAddI
+          | InstSubI
+          | InstMulI
+          | InstDivI
+          | InstModI
+          | InstGtI
+          | InstGeI
+          | InstEqI
+          | InstLeI
+          | InstLtI
+          | InstAddF
+          | InstSubF
+          | InstMulF
+          | InstDivF
+          | InstGtF
+          | InstGeF
+          | InstEqF
+          | InstLeF
+          | InstLtF
 
 exec :: Inst -> Action ()
-exec (InstPush x) = push x >> next
+exec (InstPushI x) = push (FrameInt x) >> next
+exec (InstPushF x) = push (FrameFloat x) >> next
 exec InstPop = pop >> next
 exec InstDup = pop >>= \x -> push x >> push x >> next
-exec (InstJmp l) = get >>= \s -> case lookup l $ labels s of
+exec (InstJmp l) = get >>= \s -> case lookup l $ labels s of --TODO: Replace labels with addresses at parsing
                                      Just addr -> jmp addr
                                      Nothing -> die LabelNotFoundError
 exec (InstJmpZero l) = get >>= \s -> case lookup l $ labels s of
@@ -134,75 +155,105 @@ exec (InstJmpNoZero l) = get >>= \s -> case lookup l $ labels s of
                                            Nothing -> die LabelNotFoundError
 exec InstHlt = hlt
 exec InstPrint = pop >>= liftIO . print >> next
-exec InstAdd = do
-    y <- pop
-    x <- pop
-    push $ x + y
+exec InstAddI = do --TODO: Report type error
+    (FrameInt y) <- pop
+    (FrameInt x) <- pop
+    push $ FrameInt $ x + y
     next
-exec InstSub = do
-    y <- pop
-    x <- pop
-    push $ x - y
+exec InstSubI = do
+    (FrameInt y) <- pop
+    (FrameInt x) <- pop
+    push $ FrameInt $ x - y
     next
-exec InstMul = do
-    y <- pop
-    x <- pop
-    push $ x * y
+exec InstMulI = do
+    (FrameInt y) <- pop
+    (FrameInt x) <- pop
+    push $ FrameInt $ x * y
     next
-exec InstDiv = do
-    y <- pop
+exec InstDivI = do
+    (FrameInt y) <- pop
     if y == 0 then die DivByZeroError else pure ()
-    x <- pop
-    push $ x `div` y
+    (FrameInt x) <- pop
+    push $ FrameInt $ x `div` y
     next
-exec InstMod = do
-    y <- pop
+exec InstModI = do
+    (FrameInt y) <- pop
     if y == 0 then die DivByZeroError else pure ()
-    x <- pop
-    push $ x `mod` y
+    (FrameInt x) <- pop
+    push $ FrameInt $ x `mod` y
     next
-exec InstGt = do
-    y <- pop
-    x <- pop
-    if x > y then
-        sez
-    else
-        clz
+exec InstGtI = do
+    (FrameInt y) <- pop
+    (FrameInt x) <- pop
+    if x > y then sez else clz
     next
-exec InstGe = do
-    y <- pop
-    x <- pop
-    if x >= y then
-        sez
-    else
-        clz
+exec InstGeI = do
+    (FrameInt y) <- pop
+    (FrameInt x) <- pop
+    if x >= y then sez else clz
     next
-exec InstEq = do
-    y <- pop
-    x <- pop
-    if x == y then
-        sez
-    else
-        clz
+exec InstEqI = do
+    (FrameInt y) <- pop
+    (FrameInt x) <- pop
+    if x == y then sez else clz
     next
-exec InstLe = do
-    y <- pop
-    x <- pop
-    if x <= y then
-        sez
-    else
-        clz
+exec InstLeI = do
+    (FrameInt y) <- pop
+    (FrameInt x) <- pop
+    if x <= y then sez else clz
     next
-exec InstLt = do
-    y <- pop
-    x <- pop
-    if x < y then
-        sez
-    else
-        clz
+exec InstLtI = do
+    (FrameInt y) <- pop
+    (FrameInt x) <- pop
+    if x < y then sez else clz
+    next
+exec InstAddF = do
+    (FrameFloat y) <- pop
+    (FrameFloat x) <- pop
+    push $ FrameFloat $ x + y
+    next
+exec InstSubF = do
+    (FrameFloat y) <- pop
+    (FrameFloat x) <- pop
+    push $ FrameFloat $ x - y
+    next
+exec InstMulF = do
+    (FrameFloat y) <- pop
+    (FrameFloat x) <- pop
+    push $ FrameFloat $ x * y
+    next
+exec InstDivF = do
+    (FrameFloat y) <- pop
+    (FrameFloat x) <- pop
+    push $ FrameFloat $ x / y
+    next
+exec InstGtF = do
+    (FrameFloat y) <- pop
+    (FrameFloat x) <- pop
+    if x > y then sez else clz
+    next
+exec InstGeF = do
+    (FrameFloat y) <- pop
+    (FrameFloat x) <- pop
+    if x >= y then sez else clz
+    next
+exec InstEqF = do
+    (FrameFloat y) <- pop
+    (FrameFloat x) <- pop
+    if x == y then sez else clz
+    next
+exec InstLeF = do
+    (FrameFloat y) <- pop
+    (FrameFloat x) <- pop
+    if x <= y then sez else clz
+    next
+exec InstLtF = do
+    (FrameFloat y) <- pop
+    (FrameFloat x) <- pop
+    if x < y then sez else clz
     next
 
-initial :: [Inst] -> [(String, Int)] -> MachineState
+initial :: [Inst] -> [(String, Address)] -> MachineState
 initial program labels = MachineState { stack = []
                                       , ip = 0
                                       , program = program
@@ -212,7 +263,7 @@ initial program labels = MachineState { stack = []
                                       , zf = 0
                                       }
 
-execProg :: [Inst] -> [(String, Int)] -> IO (Either MachineError (MachineState, ()))
+execProg :: [Inst] -> [(String, Address)] -> IO (Either MachineError (MachineState, ()))
 execProg prog labels = runAction act $ initial prog labels
     where act = do
               fetch >>= exec

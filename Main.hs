@@ -5,7 +5,7 @@ import Data.List
 import Core
 import Parser
 
-processLabels :: [Token] -> ([Inst], [(String, Int)])
+processLabels :: [Token] -> ([Inst], [(String, Address)])
 processLabels prog = (map (\(_, TokenInst i) -> i) insts, map (\(addr, TokenLabel l) -> (l, addr)) labels)
     where (insts, labels) = partition isInst $ tail $ scanl address (0, TokenLabel "") prog
           isInst (_, (TokenInst _)) = True

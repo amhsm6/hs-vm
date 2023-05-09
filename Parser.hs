@@ -25,7 +25,7 @@ instance Alternative Parser where
 charF :: (Char -> Bool) -> Parser Char
 charF f = Parser $ \s ->
     case s of
-        "" -> Nothing
+        [] -> Nothing
         (x:xs)
             | f x -> Just (xs, x)
             | otherwise -> Nothing
@@ -43,13 +43,16 @@ string :: String -> Parser String
 string s = mapM char s
 
 data InstParam = ParamInt Int
+               | ParamFloat Float
                | ParamLabel String
 
 data InstParamDef = IntParamDef
+                  | FloatParamDef
                   | LabelParamDef
 
 parseParam :: InstParamDef -> Parser InstParam
 parseParam IntParamDef = some digit >>= pure . ParamInt . read
+parseParam FloatParamDef = some (digit <|> char '.') >>= pure . ParamFloat . read
 parseParam LabelParamDef = some (charF $ \c -> isAlphaNum c || c == '_') >>= pure . ParamLabel
 
 data Token = TokenInst Inst
@@ -66,24 +69,34 @@ parseInst (InstDef name params constructor) = do
 
 instruction :: Parser Token
 instruction = foldl (<|>) empty $ map parseInst $
-    [ InstDef "push"  [IntParamDef]   $ \[ParamInt x] -> InstPush x
-    , InstDef "pop"   []              $ const InstPop
-    , InstDef "dup"   []              $ const InstDup
-    , InstDef "hlt"   []              $ const InstHlt
-    , InstDef "jmp"   [LabelParamDef] $ \[ParamLabel x] -> InstJmp x
-    , InstDef "jz"    [LabelParamDef] $ \[ParamLabel x] -> InstJmpZero x
-    , InstDef "jnz"   [LabelParamDef] $ \[ParamLabel x] -> InstJmpNoZero x
-    , InstDef "print" []              $ const InstPrint
-    , InstDef "add"   []              $ const InstAdd
-    , InstDef "sub"   []              $ const InstSub
-    , InstDef "mul"   []              $ const InstMul
-    , InstDef "div"   []              $ const InstDiv
-    , InstDef "mod"   []              $ const InstMod
-    , InstDef "gt"    []              $ const InstGt
-    , InstDef "ge"    []              $ const InstGe
-    , InstDef "eq"    []              $ const InstEq
-    , InstDef "le"    []              $ const InstLe
-    , InstDef "lt"    []              $ const InstLt
+    [ InstDef "pushf"  [FloatParamDef]  $ \[ParamFloat x] -> InstPushF x
+    , InstDef "push"   [IntParamDef]    $ \[ParamInt x]   -> InstPushI x
+    , InstDef "pop"    []               $ const InstPop
+    , InstDef "dup"    []               $ const InstDup
+    , InstDef "hlt"    []               $ const InstHlt
+    , InstDef "jmp"    [LabelParamDef]  $ \[ParamLabel x] -> InstJmp x
+    , InstDef "jz"     [LabelParamDef]  $ \[ParamLabel x] -> InstJmpZero x
+    , InstDef "jnz"    [LabelParamDef]  $ \[ParamLabel x] -> InstJmpNoZero x
+    , InstDef "print"  []               $ const InstPrint
+    , InstDef "addf"   []               $ const InstAddF
+    , InstDef "subf"   []               $ const InstSubF
+    , InstDef "mulf"   []               $ const InstMulF
+    , InstDef "divf"   []               $ const InstDivF
+    , InstDef "gtf"    []               $ const InstGtF
+    , InstDef "gef"    []               $ const InstGeF
+    , InstDef "eqf"    []               $ const InstEqF
+    , InstDef "lef"    []               $ const InstLeF
+    , InstDef "ltf"    []               $ const InstLtF
+    , InstDef "add"    []               $ const InstAddI
+    , InstDef "sub"    []               $ const InstSubI
+    , InstDef "mul"    []               $ const InstMulI
+    , InstDef "div"    []               $ const InstDivI
+    , InstDef "mod"    []               $ const InstModI
+    , InstDef "gt"     []               $ const InstGtI
+    , InstDef "ge"     []               $ const InstGeI
+    , InstDef "eq"     []               $ const InstEqI
+    , InstDef "le"     []               $ const InstLeI
+    , InstDef "lt"     []               $ const InstLtI
     ]
 
 label :: Parser Token
