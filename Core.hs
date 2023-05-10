@@ -28,7 +28,7 @@ data MachineError = StackUnderflow
                   | DivByZeroError
                   | IllegalInstAccess
                   | LabelNotFoundError
-                  | SomeError String
+                  | TypeError
                   deriving Show
 
 newtype Action a = Action { runAction :: MachineState -> IO (Either MachineError (MachineState, a)) }
@@ -46,9 +46,6 @@ instance Functor Action where
 
 instance MonadIO Action where   
     liftIO io = Action $ \s -> io >>= pure . Right . (s,)
-
-instance MonadFail Action where
-    fail msg = die $ SomeError msg
 
 get :: Action MachineState
 get = Action $ \s -> pure $ Right (s, s)
@@ -110,6 +107,16 @@ getStack = get >>= pure . stack
 putStack :: [Frame] -> Action ()
 putStack x = get >>= \s -> put $ s { stack = x }
 
+popInt :: Action Int
+popInt = pop >>= f
+    where f (FrameInt x) = pure x
+          f _ = die TypeError
+
+popFloat :: Action Float
+popFloat = pop >>= f
+    where f (FrameFloat x) = pure x
+          f _ = die TypeError
+
 data Inst = InstPushI Int
           | InstPushF Float
           | InstPop
@@ -155,101 +162,101 @@ exec (InstJmpNoZero l) = get >>= \s -> case lookup l $ labels s of
                                            Nothing -> die LabelNotFoundError
 exec InstHlt = hlt
 exec InstPrint = pop >>= liftIO . print >> next
-exec InstAddI = do --TODO: Report type error
-    (FrameInt y) <- pop
-    (FrameInt x) <- pop
+exec InstAddI = do
+    y <- popInt
+    x <- popInt
     push $ FrameInt $ x + y
     next
 exec InstSubI = do
-    (FrameInt y) <- pop
-    (FrameInt x) <- pop
+    y <- popInt
+    x <- popInt
     push $ FrameInt $ x - y
     next
 exec InstMulI = do
-    (FrameInt y) <- pop
-    (FrameInt x) <- pop
+    y <- popInt
+    x <- popInt
     push $ FrameInt $ x * y
     next
 exec InstDivI = do
-    (FrameInt y) <- pop
+    y <- popInt
     if y == 0 then die DivByZeroError else pure ()
-    (FrameInt x) <- pop
+    x <- popInt
     push $ FrameInt $ x `div` y
     next
 exec InstModI = do
-    (FrameInt y) <- pop
+    y <- popInt
     if y == 0 then die DivByZeroError else pure ()
-    (FrameInt x) <- pop
+    x <- popInt
     push $ FrameInt $ x `mod` y
     next
 exec InstGtI = do
-    (FrameInt y) <- pop
-    (FrameInt x) <- pop
+    y <- popInt
+    x <- popInt
     if x > y then sez else clz
     next
 exec InstGeI = do
-    (FrameInt y) <- pop
-    (FrameInt x) <- pop
+    y <- popInt
+    x <- popInt
     if x >= y then sez else clz
     next
 exec InstEqI = do
-    (FrameInt y) <- pop
-    (FrameInt x) <- pop
+    y <- popInt
+    x <- popInt
     if x == y then sez else clz
     next
 exec InstLeI = do
-    (FrameInt y) <- pop
-    (FrameInt x) <- pop
+    y <- popInt
+    x <- popInt
     if x <= y then sez else clz
     next
 exec InstLtI = do
-    (FrameInt y) <- pop
-    (FrameInt x) <- pop
+    y <- popInt
+    x <- popInt
     if x < y then sez else clz
     next
 exec InstAddF = do
-    (FrameFloat y) <- pop
-    (FrameFloat x) <- pop
+    y <- popFloat
+    x <- popFloat
     push $ FrameFloat $ x + y
     next
 exec InstSubF = do
-    (FrameFloat y) <- pop
-    (FrameFloat x) <- pop
+    y <- popFloat
+    x <- popFloat
     push $ FrameFloat $ x - y
     next
 exec InstMulF = do
-    (FrameFloat y) <- pop
-    (FrameFloat x) <- pop
+    y <- popFloat
+    x <- popFloat
     push $ FrameFloat $ x * y
     next
 exec InstDivF = do
-    (FrameFloat y) <- pop
-    (FrameFloat x) <- pop
+    y <- popFloat
+    x <- popFloat
     push $ FrameFloat $ x / y
     next
 exec InstGtF = do
-    (FrameFloat y) <- pop
-    (FrameFloat x) <- pop
+    y <- popFloat
+    x <- popFloat
     if x > y then sez else clz
     next
 exec InstGeF = do
-    (FrameFloat y) <- pop
-    (FrameFloat x) <- pop
+    y <- popFloat
+    x <- popFloat
     if x >= y then sez else clz
     next
 exec InstEqF = do
-    (FrameFloat y) <- pop
-    (FrameFloat x) <- pop
+    y <- popFloat
+    x <- popFloat
     if x == y then sez else clz
     next
 exec InstLeF = do
-    (FrameFloat y) <- pop
-    (FrameFloat x) <- pop
+    y <- popFloat
+    x <- popFloat
     if x <= y then sez else clz
     next
 exec InstLtF = do
-    (FrameFloat y) <- pop
-    (FrameFloat x) <- pop
+    y <- popFloat
+    x <- popFloat
     if x < y then sez else clz
     next
 
