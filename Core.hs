@@ -10,7 +10,10 @@ executionLimit = 10 ^ 3
 
 data Frame = FrameInt Int
            | FrameFloat Float
-           deriving Show
+
+instance Show Frame where
+    show (FrameInt x) = show x
+    show (FrameFloat x) = show x
 
 type Address = Int
 
@@ -124,7 +127,7 @@ data Inst = InstPushI Int
           | InstHlt
           | InstJmp String
           | InstJmpZero String
-          | InstJmpNoZero String
+          | InstJmpNotZero String
           | InstPrint
           | InstAddI
           | InstSubI
@@ -157,7 +160,7 @@ exec (InstJmp l) = get >>= \s -> case lookup l $ labels s of --TODO: Replace lab
 exec (InstJmpZero l) = get >>= \s -> case lookup l $ labels s of
                                          Just addr -> jz addr
                                          Nothing -> die LabelNotFoundError
-exec (InstJmpNoZero l) = get >>= \s -> case lookup l $ labels s of
+exec (InstJmpNotZero l) = get >>= \s -> case lookup l $ labels s of
                                            Just addr -> jnz addr
                                            Nothing -> die LabelNotFoundError
 exec InstHlt = hlt

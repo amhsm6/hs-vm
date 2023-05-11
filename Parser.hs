@@ -76,7 +76,7 @@ instruction = foldl (<|>) empty $ map parseInst $
     , InstDef "hlt"    []               $ const InstHlt
     , InstDef "jmp"    [LabelParamDef]  $ \[ParamLabel x] -> InstJmp x
     , InstDef "jz"     [LabelParamDef]  $ \[ParamLabel x] -> InstJmpZero x
-    , InstDef "jnz"    [LabelParamDef]  $ \[ParamLabel x] -> InstJmpNoZero x
+    , InstDef "jnz"    [LabelParamDef]  $ \[ParamLabel x] -> InstJmpNotZero x
     , InstDef "print"  []               $ const InstPrint
     , InstDef "addf"   []               $ const InstAddF
     , InstDef "subf"   []               $ const InstSubF
