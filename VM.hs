@@ -1,12 +1,13 @@
-module Core where
+module VM where
 
+import Control.Monad
 import Control.Monad.IO.Class
 
 stackCapacity :: Int
 stackCapacity = 1024 
 
 executionLimit :: Int
-executionLimit = 10 ^ 3
+executionLimit = 1024
 
 data Frame = FrameInt Int
            | FrameFloat Float
@@ -20,7 +21,6 @@ type Address = Int
 data MachineState = MachineState { stack :: [Frame]
                                  , ip :: Address
                                  , program :: [Inst]
-                                 , labels :: [(String, Address)]
                                  , halted :: Bool
                                  , instsExecuted :: Int
                                  , zf :: Int
@@ -125,9 +125,9 @@ data Inst = InstPushI Int
           | InstPop
           | InstDup
           | InstHlt
-          | InstJmp String
-          | InstJmpZero String
-          | InstJmpNotZero String
+          | InstJmp Address
+          | InstJmpZero Address
+          | InstJmpNotZero Address
           | InstPrint
           | InstAddI
           | InstSubI
@@ -154,15 +154,9 @@ exec (InstPushI x) = push (FrameInt x) >> next
 exec (InstPushF x) = push (FrameFloat x) >> next
 exec InstPop = pop >> next
 exec InstDup = pop >>= \x -> push x >> push x >> next
-exec (InstJmp l) = get >>= \s -> case lookup l $ labels s of --TODO: Replace labels with addresses at parsing
-                                     Just addr -> jmp addr
-                                     Nothing -> die LabelNotFoundError
-exec (InstJmpZero l) = get >>= \s -> case lookup l $ labels s of
-                                         Just addr -> jz addr
-                                         Nothing -> die LabelNotFoundError
-exec (InstJmpNotZero l) = get >>= \s -> case lookup l $ labels s of
-                                           Just addr -> jnz addr
-                                           Nothing -> die LabelNotFoundError
+exec (InstJmp addr) = jmp addr
+exec (InstJmpZero addr) = jz addr
+exec (InstJmpNotZero addr) = jnz addr
 exec InstHlt = hlt
 exec InstPrint = pop >>= liftIO . print >> next
 exec InstAddI = do
@@ -263,22 +257,18 @@ exec InstLtF = do
     if x < y then sez else clz
     next
 
-initial :: [Inst] -> [(String, Address)] -> MachineState
-initial program labels = MachineState { stack = []
-                                      , ip = 0
-                                      , program = program
-                                      , labels = labels
-                                      , halted = False
-                                      , instsExecuted = 0
-                                      , zf = 0
-                                      }
+initial :: [Inst] -> MachineState
+initial program = MachineState { stack = []
+                               , ip = 0
+                               , program = program
+                               , halted = False
+                               , instsExecuted = 0
+                               , zf = 0
+                               }
 
-execProg :: [Inst] -> [(String, Address)] -> IO (Either MachineError (MachineState, ()))
-execProg prog labels = runAction act $ initial prog labels
+execProg :: [Inst] -> IO (Either MachineError (MachineState, ()))
+execProg prog = runAction act $ initial prog
     where act = do
               fetch >>= exec
               s <- get
-              if halted s || instsExecuted s > executionLimit then
-                  pure ()
-              else
-                  act
+              unless (halted s || instsExecuted s > executionLimit) act
