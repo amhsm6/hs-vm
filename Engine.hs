@@ -1,4 +1,4 @@
-module VM where
+module Engine where
 
 import Control.Monad
 import Control.Monad.IO.Class
@@ -19,18 +19,17 @@ instance Show Frame where
 type Address = Int
 
 data MachineState = MachineState { stack :: [Frame]
-                                 , ip :: Address
                                  , program :: [Inst]
+                                 , ip :: Address
+                                 , zf :: Int
                                  , halted :: Bool
                                  , instsExecuted :: Int
-                                 , zf :: Int
                                  }
 
 data MachineError = StackUnderflow
                   | StackOverflow
                   | DivByZeroError
                   | IllegalInstAccess
-                  | LabelNotFoundError
                   | TypeError
                   deriving Show
 
@@ -259,11 +258,11 @@ exec InstLtF = do
 
 initial :: [Inst] -> MachineState
 initial program = MachineState { stack = []
-                               , ip = 0
                                , program = program
+                               , ip = 0
+                               , zf = 0
                                , halted = False
                                , instsExecuted = 0
-                               , zf = 0
                                }
 
 execProg :: [Inst] -> IO (Either MachineError (MachineState, ()))

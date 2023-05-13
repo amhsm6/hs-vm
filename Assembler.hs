@@ -1,10 +1,11 @@
+import Control.Monad
 import Control.Applicative
 import System.Exit
 import System.Environment
 import Data.Char
 import Data.List
 
-import VM
+import Engine
 
 newtype Parser a = Parser { runParser :: String -> Maybe (String, a) }
 
@@ -139,11 +140,7 @@ main :: IO ()
 main = do
     args <- getArgs
 
-    if null args then do
-        putStrLn "fatal error: no input files"
-        exitFailure
-    else
-        pure ()
+    when (null args) $ putStrLn "fatal error: no input files" >> exitFailure
 
     input <- readFile $ head args 
 
