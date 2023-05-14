@@ -2,6 +2,7 @@ module Engine where
 
 import Control.Monad
 import Control.Monad.IO.Class
+import GHC.Generics
 
 stackCapacity :: Int
 stackCapacity = 1024 
@@ -147,6 +148,7 @@ data Inst = InstPushI Int
           | InstEqF
           | InstLeF
           | InstLtF
+          deriving Generic
 
 exec :: Inst -> Action ()
 exec (InstPushI x) = push (FrameInt x) >> next

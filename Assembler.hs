@@ -2,6 +2,8 @@ import Control.Monad
 import Control.Applicative
 import System.Exit
 import System.Environment
+import System.FilePath
+import Data.Binary
 import Data.Char
 import Data.List
 
@@ -136,6 +138,8 @@ replaceLabels insts labels = map processInst insts
           processInst (InstJmpZero _, InfoLabel l) = maybe (error "Label not found") InstJmpZero $ lookup l labels 
           processInst (InstJmpNotZero _, InfoLabel l) = maybe (error "Label not found") InstJmpNotZero $ lookup l labels
 
+instance Binary Inst
+
 main :: IO ()
 main = do
     args <- getArgs
@@ -151,7 +155,7 @@ main = do
     let (insts, labels) = processLabels tokens
     let prog = replaceLabels insts labels
 
-    res <- execProg prog
-    case res of
-        Right _ -> pure ()
-        Left e -> putStrLn $ "ERROR: " ++ show e
+    if length args == 1 then
+        encodeFile (head args -<.> ".bin") prog
+    else
+        encodeFile (args !! 1) prog
