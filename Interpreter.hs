@@ -1,10 +1,12 @@
 import Control.Monad
 import System.Environment
 import System.Exit
+import GHC.Generics
 import Data.Binary
 
 import Engine
 
+deriving instance Generic Inst
 instance Binary Inst
 
 main :: IO ()

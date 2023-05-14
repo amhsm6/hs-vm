@@ -2,7 +2,6 @@ module Engine where
 
 import Control.Monad
 import Control.Monad.IO.Class
-import GHC.Generics
 
 stackCapacity :: Int
 stackCapacity = 1024 
@@ -124,6 +123,8 @@ data Inst = InstPushI Int
           | InstPushF Float
           | InstPop
           | InstDup
+          | InstSwap
+          | InstOver
           | InstHlt
           | InstJmp Address
           | InstJmpZero Address
@@ -148,13 +149,29 @@ data Inst = InstPushI Int
           | InstEqF
           | InstLeF
           | InstLtF
-          deriving Generic
 
 exec :: Inst -> Action ()
 exec (InstPushI x) = push (FrameInt x) >> next
 exec (InstPushF x) = push (FrameFloat x) >> next
 exec InstPop = pop >> next
-exec InstDup = pop >>= \x -> push x >> push x >> next
+exec InstDup = do
+    x <- pop
+    push x
+    push x
+    next
+exec InstSwap = do
+    x <- pop
+    y <- pop
+    push x
+    push y
+    next
+exec InstOver = do
+    x <- pop
+    y <- pop
+    push y
+    push x
+    push y
+    next
 exec (InstJmp addr) = jmp addr
 exec (InstJmpZero addr) = jz addr
 exec (InstJmpNotZero addr) = jnz addr

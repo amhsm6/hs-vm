@@ -3,6 +3,7 @@ import Control.Applicative
 import System.Exit
 import System.Environment
 import System.FilePath
+import GHC.Generics
 import Data.Binary
 import Data.Char
 import Data.List
@@ -56,6 +57,7 @@ data InstParamDef = IntParamDef
 
 data InstAdditionalInfo = InfoNothing
                         | InfoLabel String
+                        deriving Show
 
 type InstWrapper = (Inst, InstAdditionalInfo)
 
@@ -63,6 +65,7 @@ data InstDef = InstDef String [InstParamDef] ([InstParam] -> InstWrapper)
 
 data Token = TokenInst InstWrapper
            | TokenLabel String
+           deriving Show
 
 parseParam :: InstParamDef -> Parser InstParam
 parseParam IntParamDef = some digit >>= pure . ParamInt . read
@@ -73,7 +76,8 @@ parseInst :: InstDef -> Parser Token
 parseInst (InstDef name params constructor) = do
     many ws
     string name
-    parsedParams <- mapM (\param -> some ws >> parseParam param) params
+    some ws
+    parsedParams <- mapM (\param -> many ws >> parseParam param) params
     pure $ TokenInst $ constructor parsedParams
 
 simpleInst :: Inst -> InstWrapper
@@ -88,6 +92,8 @@ instruction = foldl (<|>) empty $ map parseInst $
     , InstDef "push"   [IntParamDef]    $ \[ParamInt x]   -> simpleInst $ InstPushI x
     , InstDef "pop"    []               $ const $ simpleInst InstPop
     , InstDef "dup"    []               $ const $ simpleInst InstDup
+    , InstDef "swap"   []               $ const $ simpleInst InstSwap
+    , InstDef "over"   []               $ const $ simpleInst InstOver
     , InstDef "hlt"    []               $ const $ simpleInst InstHlt
     , InstDef "jmp"    [LabelParamDef]  $ \[ParamLabel x] -> labelInst x $ InstJmp 0
     , InstDef "jz"     [LabelParamDef]  $ \[ParamLabel x] -> labelInst x $ InstJmpZero 0
@@ -116,12 +122,13 @@ instruction = foldl (<|>) empty $ map parseInst $
 
 label :: Parser Token
 label = do
+    many ws
     name <- some $ charF $ \c -> isAlphaNum c || c == '_'
     char ':'
     pure $ TokenLabel name
 
 parseProgram :: Parser [Token]
-parseProgram = many $ (instruction <|> label) >>= \token -> some ws >> pure token
+parseProgram = many (instruction <|> label) >>= \tokens -> many ws >> pure tokens
 
 processLabels :: [Token] -> ([InstWrapper], [(String, Address)])
 processLabels prog = (map (\(_, TokenInst i) -> i) insts, map (\(addr, TokenLabel l) -> (l, addr)) labels)
@@ -134,11 +141,14 @@ processLabels prog = (map (\(_, TokenInst i) -> i) insts, map (\(addr, TokenLabe
 replaceLabels :: [InstWrapper] -> [(String, Address)] -> [Inst]
 replaceLabels insts labels = map processInst insts
     where processInst (i, InfoNothing) = i
-          processInst (InstJmp _, InfoLabel l) = maybe (error "Label not found") InstJmp $ lookup l labels 
-          processInst (InstJmpZero _, InfoLabel l) = maybe (error "Label not found") InstJmpZero $ lookup l labels 
-          processInst (InstJmpNotZero _, InfoLabel l) = maybe (error "Label not found") InstJmpNotZero $ lookup l labels
+          processInst (InstJmp _, InfoLabel l) = maybe (error "label not found") InstJmp $ lookup l labels 
+          processInst (InstJmpZero _, InfoLabel l) = maybe (error "label not found") InstJmpZero $ lookup l labels 
+          processInst (InstJmpNotZero _, InfoLabel l) = maybe (error "label not found") InstJmpNotZero $ lookup l labels
 
+deriving instance Generic Inst
 instance Binary Inst
+
+deriving instance Show Inst
 
 main :: IO ()
 main = do
@@ -150,7 +160,11 @@ main = do
 
     tokens <- case runParser parseProgram input of
                   Just ([], tokens) -> pure tokens
-                  _ -> putStrLn "parse error" >> exitFailure
+                  Just (rest, tokens) -> do
+                      putStrLn "parse error:"
+                      putStrLn $ "parsed: " ++ show tokens
+                      putStrLn $ "not parsed: " ++ rest
+                      exitFailure
 
     let (insts, labels) = processLabels tokens
     let prog = replaceLabels insts labels
