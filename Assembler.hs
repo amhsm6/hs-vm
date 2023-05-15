@@ -47,7 +47,7 @@ digit = charF isDigit
 string :: String -> Parser String
 string s = mapM char s
 
-data InstParam = ParamInt Int
+data InstParam = ParamInt Integer
                | ParamFloat Float
                | ParamLabel String
 

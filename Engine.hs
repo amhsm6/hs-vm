@@ -9,7 +9,7 @@ stackCapacity = 1024
 executionLimit :: Int
 executionLimit = 1024
 
-data Frame = FrameInt Int
+data Frame = FrameInt Integer
            | FrameFloat Float
 
 instance Show Frame where
@@ -109,7 +109,7 @@ getStack = get >>= pure . stack
 putStack :: [Frame] -> Action ()
 putStack x = get >>= \s -> put $ s { stack = x }
 
-popInt :: Action Int
+popInt :: Action Integer
 popInt = pop >>= f
     where f (FrameInt x) = pure x
           f _ = die TypeError
@@ -119,7 +119,7 @@ popFloat = pop >>= f
     where f (FrameFloat x) = pure x
           f _ = die TypeError
 
-data Inst = InstPushI Int
+data Inst = InstPushI Integer
           | InstPushF Float
           | InstPop
           | InstDup
