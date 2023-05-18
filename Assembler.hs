@@ -49,10 +49,12 @@ string s = mapM char s
 
 data InstParam = ParamInt Integer
                | ParamFloat Float
+               | ParamAddress Int
                | ParamLabel String
 
 data InstParamDef = IntParamDef
                   | FloatParamDef
+                  | AddressParamDef
                   | LabelParamDef
 
 data InstAdditionalInfo = InfoNothing
@@ -68,8 +70,9 @@ data Token = TokenInst InstWrapper
            deriving Show
 
 parseParam :: InstParamDef -> Parser InstParam
-parseParam IntParamDef = some digit >>= pure . ParamInt . read
-parseParam FloatParamDef = some (digit <|> char '.') >>= pure . ParamFloat . read
+parseParam IntParamDef = some (digit <|> char '-') >>= pure . ParamInt . read
+parseParam FloatParamDef = some (digit <|> char '-' <|> char '.') >>= pure . ParamFloat . read
+parseParam AddressParamDef = some digit >>= pure . ParamAddress . read
 parseParam LabelParamDef = some (charF $ \c -> isAlphaNum c || c == '_') >>= pure . ParamLabel
 
 parseInst :: InstDef -> Parser Token
@@ -88,36 +91,35 @@ labelInst l = (,InfoLabel l)
 
 instruction :: Parser Token
 instruction = foldl (<|>) empty $ map parseInst $
-    [ InstDef "pushf"  [FloatParamDef]  $ \[ParamFloat x] -> simpleInst $ InstPushF x
-    , InstDef "push"   [IntParamDef]    $ \[ParamInt x]   -> simpleInst $ InstPushI x
-    , InstDef "pop"    []               $ const $ simpleInst InstPop
-    , InstDef "dup"    []               $ const $ simpleInst InstDup
-    , InstDef "swap"   []               $ const $ simpleInst InstSwap
-    , InstDef "over"   []               $ const $ simpleInst InstOver
-    , InstDef "hlt"    []               $ const $ simpleInst InstHlt
-    , InstDef "jmp"    [LabelParamDef]  $ \[ParamLabel x] -> labelInst x $ InstJmp 0
-    , InstDef "jz"     [LabelParamDef]  $ \[ParamLabel x] -> labelInst x $ InstJmpZero 0
-    , InstDef "jnz"    [LabelParamDef]  $ \[ParamLabel x] -> labelInst x $ InstJmpNotZero 0
-    , InstDef "print"  []               $ const $ simpleInst InstPrint
-    , InstDef "addf"   []               $ const $ simpleInst InstAddF
-    , InstDef "subf"   []               $ const $ simpleInst InstSubF
-    , InstDef "mulf"   []               $ const $ simpleInst InstMulF
-    , InstDef "divf"   []               $ const $ simpleInst InstDivF
-    , InstDef "gtf"    []               $ const $ simpleInst InstGtF
-    , InstDef "gef"    []               $ const $ simpleInst InstGeF
-    , InstDef "eqf"    []               $ const $ simpleInst InstEqF
-    , InstDef "lef"    []               $ const $ simpleInst InstLeF
-    , InstDef "ltf"    []               $ const $ simpleInst InstLtF
-    , InstDef "add"    []               $ const $ simpleInst InstAddI
-    , InstDef "sub"    []               $ const $ simpleInst InstSubI
-    , InstDef "mul"    []               $ const $ simpleInst InstMulI
-    , InstDef "div"    []               $ const $ simpleInst InstDivI
-    , InstDef "mod"    []               $ const $ simpleInst InstModI
-    , InstDef "gt"     []               $ const $ simpleInst InstGtI
-    , InstDef "ge"     []               $ const $ simpleInst InstGeI
-    , InstDef "eq"     []               $ const $ simpleInst InstEqI
-    , InstDef "le"     []               $ const $ simpleInst InstLeI
-    , InstDef "lt"     []               $ const $ simpleInst InstLtI
+    [ InstDef "pushf"  [FloatParamDef]   $ \[ParamFloat x] -> simpleInst $ InstPushF x
+    , InstDef "push"   [IntParamDef]     $ \[ParamInt x]   -> simpleInst $ InstPushI x
+    , InstDef "pop"    []                $ const $ simpleInst InstPop
+    , InstDef "dup"    [AddressParamDef] $ \[ParamAddress x] -> simpleInst $ InstDup x
+    , InstDef "swap"   [AddressParamDef] $ \[ParamAddress x] -> simpleInst $ InstSwap x
+    , InstDef "hlt"    []                $ const $ simpleInst InstHlt
+    , InstDef "jmp"    [LabelParamDef]   $ \[ParamLabel x] -> labelInst x $ InstJmp 0
+    , InstDef "jz"     [LabelParamDef]   $ \[ParamLabel x] -> labelInst x $ InstJmpZero 0
+    , InstDef "jnz"    [LabelParamDef]   $ \[ParamLabel x] -> labelInst x $ InstJmpNotZero 0
+    , InstDef "print"  []                $ const $ simpleInst InstPrint
+    , InstDef "addf"   []                $ const $ simpleInst InstAddF
+    , InstDef "subf"   []                $ const $ simpleInst InstSubF
+    , InstDef "mulf"   []                $ const $ simpleInst InstMulF
+    , InstDef "divf"   []                $ const $ simpleInst InstDivF
+    , InstDef "gtf"    []                $ const $ simpleInst InstGtF
+    , InstDef "gef"    []                $ const $ simpleInst InstGeF
+    , InstDef "eqf"    []                $ const $ simpleInst InstEqF
+    , InstDef "lef"    []                $ const $ simpleInst InstLeF
+    , InstDef "ltf"    []                $ const $ simpleInst InstLtF
+    , InstDef "add"    []                $ const $ simpleInst InstAddI
+    , InstDef "sub"    []                $ const $ simpleInst InstSubI
+    , InstDef "mul"    []                $ const $ simpleInst InstMulI
+    , InstDef "div"    []                $ const $ simpleInst InstDivI
+    , InstDef "mod"    []                $ const $ simpleInst InstModI
+    , InstDef "gt"     []                $ const $ simpleInst InstGtI
+    , InstDef "ge"     []                $ const $ simpleInst InstGeI
+    , InstDef "eq"     []                $ const $ simpleInst InstEqI
+    , InstDef "le"     []                $ const $ simpleInst InstLeI
+    , InstDef "lt"     []                $ const $ simpleInst InstLtI
     ]
 
 label :: Parser Token

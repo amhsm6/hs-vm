@@ -2,6 +2,7 @@ module Engine where
 
 import Control.Monad
 import Control.Monad.IO.Class
+import qualified Data.Vector as V
 
 stackCapacity :: Int
 stackCapacity = 1024 
@@ -18,8 +19,8 @@ instance Show Frame where
 
 type Address = Int
 
-data MachineState = MachineState { stack :: [Frame]
-                                 , program :: [Inst]
+data MachineState = MachineState { stack :: V.Vector Frame
+                                 , program :: V.Vector Inst
                                  , ip :: Address
                                  , zf :: Int
                                  , halted :: Bool
@@ -59,12 +60,8 @@ die :: MachineError -> Action a
 die err = Action $ \_ -> pure $ Left err
 
 fetch :: Action Inst
-fetch = get >>= \s -> let x = ip s
-                          y = instsExecuted s
-                      in if x < 0 || x >= length (program s) then
-                             die IllegalInstAccess
-                         else
-                             put (s { instsExecuted = y + 1 }) >> pure (program s !! x)
+fetch = get >>= \s -> let s' = s { instsExecuted = instsExecuted s + 1}
+                      in maybe (die IllegalInstAccess) (\x -> put s' >> pure x) $ program s V.!? ip s
 
 next :: Action ()
 next = get >>= \s -> put $ s { ip = ip s + 1 }
@@ -82,6 +79,12 @@ jnz x = get >>= \s -> case zf s of 0 -> jmp x
                                    1 -> next
                                    _ -> undefined
 
+sez :: Action ()
+sez = get >>= \s -> put $ s { zf = 1 }
+
+clz :: Action ()
+clz = get >>= \s -> put $ s { zf = 0 }
+
 hlt :: Action ()
 hlt = get >>= \s -> put $ s { halted = True }
 
@@ -89,24 +92,18 @@ push :: Frame -> Action ()
 push x = getStack >>= push'
     where push' s
               | length s == stackCapacity = die StackOverflow
-              | otherwise = putStack $ s ++ [x]
+              | otherwise = putStack $ V.snoc s x
 
 pop :: Action Frame
 pop = getStack >>= pop'
     where pop' s
               | null s = die StackUnderflow
-              | otherwise = putStack (init s) >> pure (last s)
+              | otherwise = putStack (V.init s) >> pure (V.last s)
 
-sez :: Action ()
-sez = get >>= \s -> put $ s { zf = 1 }
-
-clz :: Action ()
-clz = get >>= \s -> put $ s { zf = 0 }
-
-getStack :: Action [Frame]
+getStack :: Action (V.Vector Frame)
 getStack = get >>= pure . stack
 
-putStack :: [Frame] -> Action ()
+putStack :: V.Vector Frame -> Action ()
 putStack x = get >>= \s -> put $ s { stack = x }
 
 popInt :: Action Integer
@@ -122,9 +119,8 @@ popFloat = pop >>= f
 data Inst = InstPushI Integer
           | InstPushF Float
           | InstPop
-          | InstDup
-          | InstSwap
-          | InstOver
+          | InstDup Address
+          | InstSwap Address
           | InstHlt
           | InstJmp Address
           | InstJmpZero Address
@@ -154,23 +150,18 @@ exec :: Inst -> Action ()
 exec (InstPushI x) = push (FrameInt x) >> next
 exec (InstPushF x) = push (FrameFloat x) >> next
 exec InstPop = pop >> next
-exec InstDup = do
-    x <- pop
-    push x
-    push x
+exec (InstDup a) = do
+    s <- getStack
+    maybe (die StackUnderflow) push $ s V.!? (length s - a - 1)
     next
-exec InstSwap = do
-    x <- pop
+exec (InstSwap a) = do
+    s <- getStack
+
+    x <- maybe (die StackUnderflow) pure $ s V.!? (length s - a - 1)
     y <- pop
-    push x
-    push y
-    next
-exec InstOver = do
-    x <- pop
-    y <- pop
-    push y
-    push x
-    push y
+
+    putStack $ s V.// [(length s - 1, x), (length s - a - 1, y)]
+
     next
 exec (InstJmp addr) = jmp addr
 exec (InstJmpZero addr) = jz addr
@@ -194,13 +185,13 @@ exec InstMulI = do
     next
 exec InstDivI = do
     y <- popInt
-    if y == 0 then die DivByZeroError else pure ()
+    when (y == 0) $ die DivByZeroError
     x <- popInt
     push $ FrameInt $ x `div` y
     next
 exec InstModI = do
     y <- popInt
-    if y == 0 then die DivByZeroError else pure ()
+    when (y == 0) $ die DivByZeroError
     x <- popInt
     push $ FrameInt $ x `mod` y
     next
@@ -276,8 +267,8 @@ exec InstLtF = do
     next
 
 initial :: [Inst] -> MachineState
-initial program = MachineState { stack = []
-                               , program = program
+initial program = MachineState { stack = V.empty
+                               , program = V.fromList program
                                , ip = 0
                                , zf = 0
                                , halted = False
