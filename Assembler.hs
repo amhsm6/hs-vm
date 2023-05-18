@@ -65,7 +65,8 @@ type InstWrapper = (Inst, InstAdditionalInfo)
 
 data InstDef = InstDef String [InstParamDef] ([InstParam] -> InstWrapper)
 
-data Token = TokenInst InstWrapper
+data Token = TokenNothing
+           | TokenInst InstWrapper
            | TokenLabel String
            deriving Show
 
@@ -129,8 +130,21 @@ label = do
     char ':'
     pure $ TokenLabel name
 
+comment :: Parser Token
+comment = do
+    many ws
+    char ';'
+    many $ charF (/= '\n')
+    pure TokenNothing
+
 parseProgram :: Parser [Token]
-parseProgram = many (instruction <|> label) >>= \tokens -> many ws >> pure tokens
+parseProgram = do
+    tokens <- many $ instruction <|> label <|> comment
+    many ws
+
+    let f TokenNothing = False
+        f _ = True
+    pure $ filter f tokens
 
 processLabels :: [Token] -> ([InstWrapper], [(String, Address)])
 processLabels prog = (map (\(_, TokenInst i) -> i) insts, map (\(addr, TokenLabel l) -> (l, addr)) labels)
