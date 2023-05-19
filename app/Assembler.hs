@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveGeneric #-}
 
