@@ -1,3 +1,6 @@
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 import Control.Monad
 import Control.Applicative
 import System.Exit

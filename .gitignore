@@ -1,4 +1,1 @@
-*.hi
-*.o
-asm
-interpreter
+dist*

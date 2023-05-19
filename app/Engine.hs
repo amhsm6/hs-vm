@@ -267,13 +267,13 @@ exec InstLtF = do
     next
 
 initial :: [Inst] -> MachineState
-initial program = MachineState { stack = V.empty
-                               , program = V.fromList program
-                               , ip = 0
-                               , zf = 0
-                               , halted = False
-                               , instsExecuted = 0
-                               }
+initial prog = MachineState { stack = V.empty
+                            , program = V.fromList prog
+                            , ip = 0
+                            , zf = 0
+                            , halted = False
+                            , instsExecuted = 0
+                            }
 
 execProg :: [Inst] -> IO (Either MachineError (MachineState, ()))
 execProg prog = runAction act $ initial prog
