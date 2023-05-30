@@ -56,18 +56,15 @@ sepBy sep p = (p >>= \x -> many (many ws >> sep >> many ws >> p) >>= pure . (x:)
 data InstParam = ParamInt Integer
                | ParamFloat Float
                | ParamAddress Int
-               | ParamLabel String
                | ParamString String
 
 data InstParamDef = IntParamDef
                   | FloatParamDef
                   | AddressParamDef
-                  | LabelParamDef
                   | StringParamDef
 
 data InstAdditionalInfo = InfoNothing
                         | InfoLabel String
-                        deriving Show
 
 type InstWrapper = (Inst, InstAdditionalInfo)
 
@@ -76,14 +73,12 @@ data InstDef = InstDef String [InstParamDef] ([InstParam] -> InstWrapper)
 data Token = TokenInst InstWrapper
            | TokenLabel String
            | TokenComment
-           | TokenFrgDecl String [Frame] Frame
-           deriving Show
+           | TokenForeign String [Frame] Frame
 
 parseParam :: InstParamDef -> Parser InstParam
 parseParam IntParamDef = some (digit <|> char '-') >>= pure . ParamInt . read
 parseParam FloatParamDef = some (digit <|> char '-' <|> char '.') >>= pure . ParamFloat . read
 parseParam AddressParamDef = some digit >>= pure . ParamAddress . read
-parseParam LabelParamDef = some (charF $ \c -> isAlphaNum c || c == '_') >>= pure . ParamLabel
 parseParam StringParamDef = some (charF $ \c -> isAlphaNum c || c == '_') >>= pure . ParamString
 
 parseInst :: InstDef -> Parser Token
@@ -108,11 +103,11 @@ instruction = foldl (<|>) empty $ map parseInst $
     , InstDef "dup"    [AddressParamDef] $ \[ParamAddress x] -> simpleInst $ InstDup x
     , InstDef "swap"   [AddressParamDef] $ \[ParamAddress x] -> simpleInst $ InstSwap x
     , InstDef "hlt"    []                $ const $ simpleInst InstHlt
-    , InstDef "jmp"    [LabelParamDef]   $ \[ParamLabel x] -> labelInst x $ InstJmp 0
-    , InstDef "jz"     [LabelParamDef]   $ \[ParamLabel x] -> labelInst x $ InstJmpZero 0
-    , InstDef "jnz"    [LabelParamDef]   $ \[ParamLabel x] -> labelInst x $ InstJmpNotZero 0
-    , InstDef "call"   [LabelParamDef]   $ \[ParamLabel x] -> labelInst x $ InstCall 0
-    , InstDef "frg"    [StringParamDef]  $ \[ParamString x] -> simpleInst $ InstForeign x
+    , InstDef "jmp"    [StringParamDef]  $ \[ParamString x] -> labelInst x $ InstJmp 0
+    , InstDef "jz"     [StringParamDef]  $ \[ParamString x] -> labelInst x $ InstJmpZero 0
+    , InstDef "jnz"    [StringParamDef]  $ \[ParamString x] -> labelInst x $ InstJmpNotZero 0
+    , InstDef "call"   [StringParamDef]  $ \[ParamString x] -> labelInst x $ InstCall 0
+    , InstDef "ext"    [StringParamDef]  $ \[ParamString x] -> simpleInst $ InstForeign x
     , InstDef "ret"    []                $ const $ simpleInst InstRet
     , InstDef "print"  []                $ const $ simpleInst InstPrint
     , InstDef "addf"   []                $ const $ simpleInst InstAddF
@@ -164,29 +159,29 @@ parseType = parseInt <|>
             parseFloat <|>
             parsePtr
 
-frgDecl :: Parser Token
-frgDecl = do
+foreignFunction :: Parser Token
+foreignFunction = do
     many ws
     name <- some $ charF $ \c -> isAlphaNum c || c == '_'
     many ws
     string "::"
     many ws
     types <- sepBy (string "->") parseType
-    pure $ TokenFrgDecl name (init types) (last types)
+    pure $ TokenForeign name (init types) (last types)
 
 parseProgram :: Parser [Token]
 parseProgram = do
-    tokens <- many $ instruction <|> label <|> comment <|> frgDecl
+    tokens <- many $ instruction <|> label <|> comment <|> foreignFunction
     many ws
     pure tokens
 
 splitTokens :: [Token] -> ([InstWrapper], [(String, Address)], [(String, [Frame], Frame)])
 splitTokens tokens = go tokens 0 [] [] []
-    where go [] _ insts labels frgDecls = (insts, labels, frgDecls)
-          go ((TokenInst i):ts) addr insts labels frgDecls = go ts (addr + 1) (insts ++ [i]) labels frgDecls
-          go ((TokenLabel l):ts) addr insts labels frgDecls = go ts addr insts (labels ++ [(l, addr)]) frgDecls
-          go ((TokenFrgDecl name args ret):ts) addr insts labels frgDecls = go ts addr insts labels $ frgDecls ++ [(name, args, ret)]
-          go (_:ts) addr insts labels frgDecls = go ts addr insts labels frgDecls
+    where go [] _ insts labels foreigns = (insts, labels, foreigns)
+          go ((TokenInst i):ts) addr insts labels foreigns =                go ts (addr + 1) (insts ++ [i]) labels                  foreigns
+          go ((TokenLabel l):ts) addr insts labels foreigns =               go ts addr       insts          (labels ++ [(l, addr)]) foreigns
+          go ((TokenForeign name args ret):ts) addr insts labels foreigns = go ts addr       insts          labels                  (foreigns ++ [(name, args, ret)])
+          go (_:ts) addr insts labels foreigns =                            go ts addr       insts          labels                  foreigns
 
 replaceLabels :: [InstWrapper] -> [(String, Address)] -> [Inst]
 replaceLabels insts labels = map processInst insts
@@ -203,7 +198,9 @@ instance Binary Inst
 deriving instance Generic Frame
 instance Binary Frame
 
+deriving instance Show InstAdditionalInfo
 deriving instance Show Inst
+deriving instance Show Token
 
 main :: IO ()
 main = do
@@ -222,12 +219,12 @@ main = do
                       putStrLn $ "not parsed: " ++ rest
                       exitFailure
 
-    let (insts, labels, frgDecls) = splitTokens tokens
+    let (insts, labels, foreigns) = splitTokens tokens
     let prog = replaceLabels insts labels
 
     bc <- case lookup "main" labels of
               Nothing -> putStrLn "error: no entry" >> exitFailure
-              Just entry -> pure (entry, frgDecls, prog)
+              Just entry -> pure (entry, foreigns, prog)
 
     if length args == 1 then
         encodeFile (head args -<.> ".bin") bc

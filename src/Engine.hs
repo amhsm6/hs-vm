@@ -32,7 +32,7 @@ data MachineState = MachineState { stack :: V.Vector Frame
                                  , program :: V.Vector Inst
                                  , ip :: Address
                                  , zf :: Int
-                                 , foreigns :: M.Map String ([Frame], Frame)
+                                 , foreignFunctions :: M.Map String ([Frame], Frame)
                                  , halted :: Bool
                                  , instsExecuted :: Int
                                  }
@@ -214,8 +214,8 @@ exec (InstCall addr) = do
     jmp addr
 exec InstRet = popAddr >>= jmp
 exec (InstForeign name) = do
-    foreignFunctions <- get >>= pure . foreigns
-    case M.lookup name foreignFunctions of
+    foreigns <- get >>= pure . foreignFunctions
+    case M.lookup name foreigns of
         Nothing -> die IllegalForeignCall
         Just (argTypes, retType) -> do
             args <- forM (reverse argTypes) $ \t -> do
@@ -326,17 +326,17 @@ exec InstLtF = do
     next
 
 initial :: [Inst] -> [(String, ([Frame], Frame))] -> MachineState
-initial prog frgsDeclarations = MachineState { stack = V.empty
-                                             , program = V.fromList prog
-                                             , ip = 0
-                                             , zf = 0
-                                             , foreigns = M.fromList frgsDeclarations
-                                             , halted = False
-                                             , instsExecuted = 0
-                                             }
+initial prog foreigns = MachineState { stack = V.empty
+                                     , program = V.fromList prog
+                                     , ip = 0
+                                     , zf = 0
+                                     , foreignFunctions = M.fromList foreigns
+                                     , halted = False
+                                     , instsExecuted = 0
+                                     }
 
 execProg :: Address -> [Inst] -> [(String, ([Frame], Frame))] -> IO (Either MachineError (MachineState, ()))
-execProg entry prog frgsDeclarations = runAction (jmp entry >> act) $ initial prog frgsDeclarations 
+execProg entry prog foreigns = runAction (jmp entry >> act) $ initial prog foreigns
     where act = do
               fetch >>= exec
               s <- get

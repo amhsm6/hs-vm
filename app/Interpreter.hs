@@ -21,9 +21,9 @@ main = do
 
     when (null args) $ putStrLn "fatal error: no input files" >> exitFailure
 
-    (entry, frgDecls, prog) <- decodeFile $ head args
+    (entry, foreigns, prog) <- decodeFile $ head args
 
-    res <- execProg entry prog frgDecls
+    res <- execProg entry prog foreigns
     case res of
         Right _ -> pure ()
         Left e -> putStrLn $ "ERROR: " ++ show e
