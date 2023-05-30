@@ -53,14 +53,18 @@ string s = mapM char s
 sepBy :: Parser a -> Parser b -> Parser [b]
 sepBy sep p = (p >>= \x -> many (many ws >> sep >> many ws >> p) >>= pure . (x:)) <|> pure []
 
-data InstParam = ParamInt Integer
+data InstParam = ParamAddress Int
+               | ParamInt Integer
+               | ParamByte Word8
                | ParamFloat Float
-               | ParamAddress Int
+               | ParamPtr Word
                | ParamString String
 
-data InstParamDef = IntParamDef
+data InstParamDef = AddressParamDef
+                  | IntParamDef
+                  | ByteParamDef
                   | FloatParamDef
-                  | AddressParamDef
+                  | PtrParamDef
                   | StringParamDef
 
 data InstAdditionalInfo = InfoNothing
@@ -76,9 +80,11 @@ data Token = TokenInst InstWrapper
            | TokenForeign String [Frame] Frame
 
 parseParam :: InstParamDef -> Parser InstParam
-parseParam IntParamDef = some (digit <|> char '-') >>= pure . ParamInt . read
-parseParam FloatParamDef = some (digit <|> char '-' <|> char '.') >>= pure . ParamFloat . read
 parseParam AddressParamDef = some digit >>= pure . ParamAddress . read
+parseParam IntParamDef = some (digit <|> char '-') >>= pure . ParamInt . read
+parseParam ByteParamDef = some digit >>= pure . ParamByte . read
+parseParam FloatParamDef = some (digit <|> char '-' <|> char '.') >>= pure . ParamFloat . read
+parseParam PtrParamDef = some digit >>= pure . ParamPtr . read
 parseParam StringParamDef = some (charF $ \c -> isAlphaNum c || c == '_') >>= pure . ParamString
 
 parseInst :: InstDef -> Parser Token
@@ -97,38 +103,61 @@ labelInst l = (,InfoLabel l)
 
 instruction :: Parser Token
 instruction = foldl (<|>) empty $ map parseInst $
-    [ InstDef "pushf"  [FloatParamDef]   $ \[ParamFloat x] -> simpleInst $ InstPushF x
-    , InstDef "push"   [IntParamDef]     $ \[ParamInt x]   -> simpleInst $ InstPushI x
-    , InstDef "pop"    []                $ const $ simpleInst InstPop
+    [ InstDef "pushi"  [IntParamDef]     $ \[ParamInt x] -> simpleInst $ InstPushI x
+    , InstDef "pushb"  [ByteParamDef]    $ \[ParamByte x] -> simpleInst $ InstPushB x
+    , InstDef "pushf"  [FloatParamDef]   $ \[ParamFloat x] -> simpleInst $ InstPushF x
+    , InstDef "pushp"  [PtrParamDef]     $ \[ParamPtr x] -> simpleInst $ InstPushP x
+
+    , InstDef "drop"   []                $ const $ simpleInst InstDrop
     , InstDef "dup"    [AddressParamDef] $ \[ParamAddress x] -> simpleInst $ InstDup x
     , InstDef "swap"   [AddressParamDef] $ \[ParamAddress x] -> simpleInst $ InstSwap x
-    , InstDef "hlt"    []                $ const $ simpleInst InstHlt
+
     , InstDef "jmp"    [StringParamDef]  $ \[ParamString x] -> labelInst x $ InstJmp 0
     , InstDef "jz"     [StringParamDef]  $ \[ParamString x] -> labelInst x $ InstJmpZero 0
     , InstDef "jnz"    [StringParamDef]  $ \[ParamString x] -> labelInst x $ InstJmpNotZero 0
+
     , InstDef "call"   [StringParamDef]  $ \[ParamString x] -> labelInst x $ InstCall 0
-    , InstDef "ext"    [StringParamDef]  $ \[ParamString x] -> simpleInst $ InstForeign x
     , InstDef "ret"    []                $ const $ simpleInst InstRet
+
+    , InstDef "ext"    [StringParamDef]  $ \[ParamString x] -> simpleInst $ InstForeign x
+
+    , InstDef "ldi"    []                $ const $ simpleInst InstLoadI
+    , InstDef "ldb"    []                $ const $ simpleInst InstLoadB
+    , InstDef "ldf"    []                $ const $ simpleInst InstLoadF
+
+    , InstDef "sti"    []                $ const $ simpleInst InstStoreI
+    , InstDef "stb"    []                $ const $ simpleInst InstStoreB
+    , InstDef "stf"    []                $ const $ simpleInst InstStoreF
+
+    , InstDef "hlt"    []                $ const $ simpleInst InstHlt
+
     , InstDef "print"  []                $ const $ simpleInst InstPrint
+
+    , InstDef "addi"   []                $ const $ simpleInst InstAddI
+    , InstDef "subi"   []                $ const $ simpleInst InstSubI
+    , InstDef "muli"   []                $ const $ simpleInst InstMulI
+    , InstDef "divi"   []                $ const $ simpleInst InstDivI
+    , InstDef "modi"   []                $ const $ simpleInst InstModI
+
+    , InstDef "gti"    []                $ const $ simpleInst InstGtI
+    , InstDef "gei"    []                $ const $ simpleInst InstGeI
+    , InstDef "eqi"    []                $ const $ simpleInst InstEqI
+    , InstDef "lei"    []                $ const $ simpleInst InstLeI
+    , InstDef "lti"    []                $ const $ simpleInst InstLtI
+
     , InstDef "addf"   []                $ const $ simpleInst InstAddF
     , InstDef "subf"   []                $ const $ simpleInst InstSubF
     , InstDef "mulf"   []                $ const $ simpleInst InstMulF
     , InstDef "divf"   []                $ const $ simpleInst InstDivF
+
     , InstDef "gtf"    []                $ const $ simpleInst InstGtF
     , InstDef "gef"    []                $ const $ simpleInst InstGeF
     , InstDef "eqf"    []                $ const $ simpleInst InstEqF
     , InstDef "lef"    []                $ const $ simpleInst InstLeF
     , InstDef "ltf"    []                $ const $ simpleInst InstLtF
-    , InstDef "add"    []                $ const $ simpleInst InstAddI
-    , InstDef "sub"    []                $ const $ simpleInst InstSubI
-    , InstDef "mul"    []                $ const $ simpleInst InstMulI
-    , InstDef "div"    []                $ const $ simpleInst InstDivI
-    , InstDef "mod"    []                $ const $ simpleInst InstModI
-    , InstDef "gt"     []                $ const $ simpleInst InstGtI
-    , InstDef "ge"     []                $ const $ simpleInst InstGeI
-    , InstDef "eq"     []                $ const $ simpleInst InstEqI
-    , InstDef "le"     []                $ const $ simpleInst InstLeI
-    , InstDef "lt"     []                $ const $ simpleInst InstLtI
+
+    , InstDef "addp"   []                $ const $ simpleInst InstAddP
+    , InstDef "subp"   []                $ const $ simpleInst InstSubP
     ]
 
 label :: Parser Token

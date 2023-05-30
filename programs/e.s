@@ -20,7 +20,7 @@ loop:
 
     ; clean up
     swap 3
-    pop
+    drop
 
     dup 2 print
 

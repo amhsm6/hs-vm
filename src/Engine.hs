@@ -3,8 +3,8 @@ module Engine where
 import Control.Monad
 import Control.Monad.IO.Class
 import System.Posix.DynamicLinker
+import Foreign
 import Foreign.LibFFI
-import Foreign.Ptr
 import qualified Data.Map as M
 import qualified Data.Vector as V
 import Numeric
@@ -17,15 +17,17 @@ executionLimit = 1024
 
 type Address = Int
 
-data Frame = FrameInt Integer
+data Frame = FrameAddr Address
+           | FrameInt Integer
+           | FrameByte Word8
            | FrameFloat Float
-           | FrameAddr Address
            | FramePtr Word
 
 instance Show Frame where
-    show (FrameInt x) = show x
-    show (FrameFloat x) = show x
     show (FrameAddr x) = "#" ++ show x
+    show (FrameInt x) = show x
+    show (FrameByte x) = show x
+    show (FrameFloat x) = show x
     show (FramePtr x) = "0x" ++ showHex x ""
 
 data MachineState = MachineState { stack :: V.Vector Frame
@@ -117,19 +119,24 @@ getStack = get >>= pure . stack
 putStack :: V.Vector Frame -> Action ()
 putStack x = get >>= \s -> put $ s { stack = x }
 
+popAddr :: Action Address
+popAddr = pop >>= f
+    where f (FrameAddr x) = pure x
+          f _ = die TypeError
+
 popInt :: Action Integer
 popInt = pop >>= f
     where f (FrameInt x) = pure x
           f _ = die TypeError
 
+popByte :: Action Word8
+popByte = pop >>= f
+    where f (FrameByte x) = pure x
+          f _ = die TypeError
+
 popFloat :: Action Float
 popFloat = pop >>= f
     where f (FrameFloat x) = pure x
-          f _ = die TypeError
-
-popAddr :: Action Address
-popAddr = pop >>= f
-    where f (FrameAddr x) = pure x
           f _ = die TypeError
 
 popPtr :: Action Word
@@ -139,6 +146,7 @@ popPtr = pop >>= f
 
 frameToArg :: Frame -> Arg
 frameToArg (FrameInt x) = argInt64 $ fromIntegral x
+frameToArg (FrameByte x) = argWord8 x
 frameToArg (FrameFloat x) = argCFloat $ realToFrac x
 frameToArg (FramePtr x) = argPtr $ wordPtrToPtr $ WordPtr x
 frameToArg _ = undefined
@@ -147,6 +155,9 @@ callForeign :: FunPtr a -> [Arg] -> Frame -> Action ()
 callForeign fn args (FrameInt _) = do
     res <- liftIO $ callFFI fn retInt64 args
     push $ FrameInt $ fromIntegral res
+callForeign fn args (FrameByte _) = do
+    res <- liftIO $ callFFI fn retWord8 args
+    push $ FrameByte res
 callForeign fn args (FrameFloat _) = do
     res <- liftIO $ callFFI fn retCFloat args
     push $ FrameFloat $ realToFrac res
@@ -157,42 +168,69 @@ callForeign fn args (FramePtr _) = do
 callForeign _ _ _ = undefined
 
 data Inst = InstPushI Integer
+          | InstPushB Word8
           | InstPushF Float
-          | InstPop
+          | InstPushP Word
+
+          | InstDrop
           | InstDup Address
           | InstSwap Address
-          | InstHlt
+
           | InstJmp Address
           | InstJmpZero Address
           | InstJmpNotZero Address
+
           | InstCall Address
           | InstRet
+
           | InstForeign String
+
+          | InstLoadI
+          | InstLoadB
+          | InstLoadF
+
+          | InstStoreI
+          | InstStoreB
+          | InstStoreF
+
+          | InstHlt
+
           | InstPrint
+
           | InstAddI
           | InstSubI
           | InstMulI
           | InstDivI
           | InstModI
+
           | InstGtI
           | InstGeI
           | InstEqI
           | InstLeI
           | InstLtI
+
           | InstAddF
           | InstSubF
           | InstMulF
           | InstDivF
+
           | InstGtF
           | InstGeF
           | InstEqF
           | InstLeF
           | InstLtF
 
+          | InstAddP
+          | InstSubP
+
 exec :: Inst -> Action ()
+
 exec (InstPushI x) = push (FrameInt x) >> next
+exec (InstPushB x) = push (FrameByte x) >> next
 exec (InstPushF x) = push (FrameFloat x) >> next
-exec InstPop = pop >> next
+exec (InstPushP x) = push (FramePtr x) >> next
+
+exec InstDrop = pop >> next
 exec (InstDup a) = do
     s <- getStack
     maybe (die StackUnderflow) push $ s V.!? (length s - a - 1)
@@ -206,13 +244,16 @@ exec (InstSwap a) = do
     putStack $ s V.// [(length s - 1, x), (length s - a - 1, y)]
 
     next
+
 exec (InstJmp addr) = jmp addr
 exec (InstJmpZero addr) = jz addr
 exec (InstJmpNotZero addr) = jnz addr
+
 exec (InstCall addr) = do
     get >>= push . FrameAddr . (+1) . ip
     jmp addr
 exec InstRet = popAddr >>= jmp
+
 exec (InstForeign name) = do
     foreigns <- get >>= pure . foreignFunctions
     case M.lookup name foreigns of
@@ -225,8 +266,32 @@ exec (InstForeign name) = do
 
             fn <- liftIO $ dlsym Default name
             callForeign fn (reverse args) retType
+            next
+
+exec InstLoadI = popPtr >>= liftIO . peek . wordPtrToPtr . WordPtr >>= push . FrameInt . (fromIntegral :: Int -> Integer) >> next
+exec InstLoadB = popPtr >>= liftIO . peek . wordPtrToPtr . WordPtr >>= push . FrameByte >> next
+exec InstLoadF = popPtr >>= liftIO . peek . wordPtrToPtr . WordPtr >>= push . FrameFloat >> next
+
+exec InstStoreI = do
+    val <- popInt
+    ptr <- popPtr
+    liftIO $ poke (wordPtrToPtr $ WordPtr ptr) (fromIntegral val :: Int)
+    next
+exec InstStoreB = do
+    val <- popByte
+    ptr <- popPtr
+    liftIO $ poke (wordPtrToPtr $ WordPtr ptr) val
+    next
+exec InstStoreF = do
+    val <- popFloat
+    ptr <- popPtr
+    liftIO $ poke (wordPtrToPtr $ WordPtr ptr) val
+    next
+
 exec InstHlt = hlt
+
 exec InstPrint = pop >>= liftIO . print >> next
+
 exec InstAddI = do
     y <- popInt
     x <- popInt
@@ -254,6 +319,7 @@ exec InstModI = do
     x <- popInt
     push $ FrameInt $ x `mod` y
     next
+
 exec InstGtI = do
     y <- popInt
     x <- popInt
@@ -279,6 +345,7 @@ exec InstLtI = do
     x <- popInt
     if x < y then sez else clz
     next
+
 exec InstAddF = do
     y <- popFloat
     x <- popFloat
@@ -299,6 +366,7 @@ exec InstDivF = do
     x <- popFloat
     push $ FrameFloat $ x / y
     next
+
 exec InstGtF = do
     y <- popFloat
     x <- popFloat
@@ -323,6 +391,17 @@ exec InstLtF = do
     y <- popFloat
     x <- popFloat
     if x < y then sez else clz
+    next
+
+exec InstAddP = do
+    y <- popPtr
+    x <- popPtr
+    push $ FramePtr $ x + y
+    next
+exec InstSubP = do
+    y <- popPtr
+    x <- popPtr
+    push $ FramePtr $ x - y
     next
 
 initial :: [Inst] -> [(String, ([Frame], Frame))] -> MachineState
