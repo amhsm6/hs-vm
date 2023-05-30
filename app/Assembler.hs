@@ -10,7 +10,6 @@ import System.FilePath
 import GHC.Generics
 import Data.Binary
 import Data.Char
-import Data.List
 
 import Engine
 
@@ -51,15 +50,20 @@ digit = charF isDigit
 string :: String -> Parser String
 string s = mapM char s
 
+sepBy :: Parser a -> Parser b -> Parser [b]
+sepBy sep p = (p >>= \x -> many (many ws >> sep >> many ws >> p) >>= pure . (x:)) <|> pure []
+
 data InstParam = ParamInt Integer
                | ParamFloat Float
                | ParamAddress Int
                | ParamLabel String
+               | ParamString String
 
 data InstParamDef = IntParamDef
                   | FloatParamDef
                   | AddressParamDef
                   | LabelParamDef
+                  | StringParamDef
 
 data InstAdditionalInfo = InfoNothing
                         | InfoLabel String
@@ -69,9 +73,10 @@ type InstWrapper = (Inst, InstAdditionalInfo)
 
 data InstDef = InstDef String [InstParamDef] ([InstParam] -> InstWrapper)
 
-data Token = TokenNothing
-           | TokenInst InstWrapper
+data Token = TokenInst InstWrapper
            | TokenLabel String
+           | TokenComment
+           | TokenFrgDecl String [Frame] Frame
            deriving Show
 
 parseParam :: InstParamDef -> Parser InstParam
@@ -79,6 +84,7 @@ parseParam IntParamDef = some (digit <|> char '-') >>= pure . ParamInt . read
 parseParam FloatParamDef = some (digit <|> char '-' <|> char '.') >>= pure . ParamFloat . read
 parseParam AddressParamDef = some digit >>= pure . ParamAddress . read
 parseParam LabelParamDef = some (charF $ \c -> isAlphaNum c || c == '_') >>= pure . ParamLabel
+parseParam StringParamDef = some (charF $ \c -> isAlphaNum c || c == '_') >>= pure . ParamString
 
 parseInst :: InstDef -> Parser Token
 parseInst (InstDef name params constructor) = do
@@ -105,6 +111,9 @@ instruction = foldl (<|>) empty $ map parseInst $
     , InstDef "jmp"    [LabelParamDef]   $ \[ParamLabel x] -> labelInst x $ InstJmp 0
     , InstDef "jz"     [LabelParamDef]   $ \[ParamLabel x] -> labelInst x $ InstJmpZero 0
     , InstDef "jnz"    [LabelParamDef]   $ \[ParamLabel x] -> labelInst x $ InstJmpNotZero 0
+    , InstDef "call"   [LabelParamDef]   $ \[ParamLabel x] -> labelInst x $ InstCall 0
+    , InstDef "frg"    [StringParamDef]  $ \[ParamString x] -> simpleInst $ InstForeign x
+    , InstDef "ret"    []                $ const $ simpleInst InstRet
     , InstDef "print"  []                $ const $ simpleInst InstPrint
     , InstDef "addf"   []                $ const $ simpleInst InstAddF
     , InstDef "subf"   []                $ const $ simpleInst InstSubF
@@ -139,24 +148,45 @@ comment = do
     many ws
     char ';'
     many $ charF (/= '\n')
-    pure TokenNothing
+    pure TokenComment
+
+parseInt :: Parser Frame
+parseInt = string "Int" >> pure (FrameInt 0)
+
+parseFloat :: Parser Frame
+parseFloat = string "Float" >> pure (FrameFloat 0)
+
+parsePtr :: Parser Frame
+parsePtr = string "Ptr" >> pure (FramePtr 0)
+
+parseType :: Parser Frame
+parseType = parseInt <|>
+            parseFloat <|>
+            parsePtr
+
+frgDecl :: Parser Token
+frgDecl = do
+    many ws
+    name <- some $ charF $ \c -> isAlphaNum c || c == '_'
+    many ws
+    string "::"
+    many ws
+    types <- sepBy (string "->") parseType
+    pure $ TokenFrgDecl name (init types) (last types)
 
 parseProgram :: Parser [Token]
 parseProgram = do
-    tokens <- many $ instruction <|> label <|> comment
+    tokens <- many $ instruction <|> label <|> comment <|> frgDecl
     many ws
+    pure tokens
 
-    let f TokenNothing = False
-        f _ = True
-    pure $ filter f tokens
-
-processLabels :: [Token] -> ([InstWrapper], [(String, Address)])
-processLabels prog = (map (\(_, TokenInst i) -> i) insts, map (\(addr, TokenLabel l) -> (l, addr)) labels)
-    where (insts, labels) = partition isInst $ tail $ scanl address (0, TokenLabel "") prog
-          isInst (_, (TokenInst _)) = True
-          isInst (_, (TokenLabel _)) = False
-          address (addr, _) t@(TokenInst _) = (addr + 1, t)
-          address (addr, _) t@(TokenLabel _) = (addr, t)
+splitTokens :: [Token] -> ([InstWrapper], [(String, Address)], [(String, [Frame], Frame)])
+splitTokens tokens = go tokens 0 [] [] []
+    where go [] _ insts labels frgDecls = (insts, labels, frgDecls)
+          go ((TokenInst i):ts) addr insts labels frgDecls = go ts (addr + 1) (insts ++ [i]) labels frgDecls
+          go ((TokenLabel l):ts) addr insts labels frgDecls = go ts addr insts (labels ++ [(l, addr)]) frgDecls
+          go ((TokenFrgDecl name args ret):ts) addr insts labels frgDecls = go ts addr insts labels $ frgDecls ++ [(name, args, ret)]
+          go (_:ts) addr insts labels frgDecls = go ts addr insts labels frgDecls
 
 replaceLabels :: [InstWrapper] -> [(String, Address)] -> [Inst]
 replaceLabels insts labels = map processInst insts
@@ -164,9 +194,14 @@ replaceLabels insts labels = map processInst insts
           processInst (InstJmp _, InfoLabel l) = maybe (error "label not found") InstJmp $ lookup l labels 
           processInst (InstJmpZero _, InfoLabel l) = maybe (error "label not found") InstJmpZero $ lookup l labels 
           processInst (InstJmpNotZero _, InfoLabel l) = maybe (error "label not found") InstJmpNotZero $ lookup l labels
+          processInst (InstCall _, InfoLabel l) = maybe (error "label not found") InstCall $ lookup l labels
+          processInst _ = undefined
 
 deriving instance Generic Inst
 instance Binary Inst
+
+deriving instance Generic Frame
+instance Binary Frame
 
 deriving instance Show Inst
 
@@ -179,6 +214,7 @@ main = do
     input <- readFile $ head args 
 
     tokens <- case runParser parseProgram input of
+                  Nothing -> pure []
                   Just ([], tokens) -> pure tokens
                   Just (rest, tokens) -> do
                       putStrLn "parse error:"
@@ -186,10 +222,14 @@ main = do
                       putStrLn $ "not parsed: " ++ rest
                       exitFailure
 
-    let (insts, labels) = processLabels tokens
+    let (insts, labels, frgDecls) = splitTokens tokens
     let prog = replaceLabels insts labels
 
+    bc <- case lookup "main" labels of
+              Nothing -> putStrLn "error: no entry" >> exitFailure
+              Just entry -> pure (entry, frgDecls, prog)
+
     if length args == 1 then
-        encodeFile (head args -<.> ".bin") prog
+        encodeFile (head args -<.> ".bin") bc
     else
-        encodeFile (args !! 1) prog
+        encodeFile (args !! 1) bc

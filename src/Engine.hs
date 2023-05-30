@@ -2,7 +2,12 @@ module Engine where
 
 import Control.Monad
 import Control.Monad.IO.Class
+import System.Posix.DynamicLinker
+import Foreign.LibFFI
+import Foreign.Ptr
+import qualified Data.Map as M
 import qualified Data.Vector as V
+import Numeric
 
 stackCapacity :: Int
 stackCapacity = 1024 
@@ -10,19 +15,24 @@ stackCapacity = 1024
 executionLimit :: Int
 executionLimit = 1024
 
+type Address = Int
+
 data Frame = FrameInt Integer
            | FrameFloat Float
+           | FrameAddr Address
+           | FramePtr Word
 
 instance Show Frame where
     show (FrameInt x) = show x
     show (FrameFloat x) = show x
-
-type Address = Int
+    show (FrameAddr x) = "#" ++ show x
+    show (FramePtr x) = "0x" ++ showHex x ""
 
 data MachineState = MachineState { stack :: V.Vector Frame
                                  , program :: V.Vector Inst
                                  , ip :: Address
                                  , zf :: Int
+                                 , foreigns :: M.Map String ([Frame], Frame)
                                  , halted :: Bool
                                  , instsExecuted :: Int
                                  }
@@ -32,6 +42,7 @@ data MachineError = StackUnderflow
                   | DivByZeroError
                   | IllegalInstAccess
                   | TypeError
+                  | IllegalForeignCall
                   deriving Show
 
 newtype Action a = Action { runAction :: MachineState -> IO (Either MachineError (MachineState, a)) }
@@ -116,6 +127,35 @@ popFloat = pop >>= f
     where f (FrameFloat x) = pure x
           f _ = die TypeError
 
+popAddr :: Action Address
+popAddr = pop >>= f
+    where f (FrameAddr x) = pure x
+          f _ = die TypeError
+
+popPtr :: Action Word
+popPtr = pop >>= f
+    where f (FramePtr x) = pure x
+          f _ = die TypeError
+
+frameToArg :: Frame -> Arg
+frameToArg (FrameInt x) = argInt64 $ fromIntegral x
+frameToArg (FrameFloat x) = argCFloat $ realToFrac x
+frameToArg (FramePtr x) = argPtr $ wordPtrToPtr $ WordPtr x
+frameToArg _ = undefined
+
+callForeign :: FunPtr a -> [Arg] -> Frame -> Action ()
+callForeign fn args (FrameInt _) = do
+    res <- liftIO $ callFFI fn retInt64 args
+    push $ FrameInt $ fromIntegral res
+callForeign fn args (FrameFloat _) = do
+    res <- liftIO $ callFFI fn retCFloat args
+    push $ FrameFloat $ realToFrac res
+callForeign fn args (FramePtr _) = do
+    res <- liftIO $ callFFI fn (retPtr retVoid) args
+    let (WordPtr ptr) = ptrToWordPtr res
+    push $ FramePtr ptr
+callForeign _ _ _ = undefined
+
 data Inst = InstPushI Integer
           | InstPushF Float
           | InstPop
@@ -125,6 +165,9 @@ data Inst = InstPushI Integer
           | InstJmp Address
           | InstJmpZero Address
           | InstJmpNotZero Address
+          | InstCall Address
+          | InstRet
+          | InstForeign String
           | InstPrint
           | InstAddI
           | InstSubI
@@ -166,6 +209,22 @@ exec (InstSwap a) = do
 exec (InstJmp addr) = jmp addr
 exec (InstJmpZero addr) = jz addr
 exec (InstJmpNotZero addr) = jnz addr
+exec (InstCall addr) = do
+    get >>= push . FrameAddr . (+1) . ip
+    jmp addr
+exec InstRet = popAddr >>= jmp
+exec (InstForeign name) = do
+    foreignFunctions <- get >>= pure . foreigns
+    case M.lookup name foreignFunctions of
+        Nothing -> die IllegalForeignCall
+        Just (argTypes, retType) -> do
+            args <- forM (reverse argTypes) $ \t -> do
+                x <- pop
+                --TODO: t and x must match
+                pure $ frameToArg x
+
+            fn <- liftIO $ dlsym Default name
+            callForeign fn (reverse args) retType
 exec InstHlt = hlt
 exec InstPrint = pop >>= liftIO . print >> next
 exec InstAddI = do
@@ -266,17 +325,18 @@ exec InstLtF = do
     if x < y then sez else clz
     next
 
-initial :: [Inst] -> MachineState
-initial prog = MachineState { stack = V.empty
-                            , program = V.fromList prog
-                            , ip = 0
-                            , zf = 0
-                            , halted = False
-                            , instsExecuted = 0
-                            }
+initial :: [Inst] -> [(String, ([Frame], Frame))] -> MachineState
+initial prog frgsDeclarations = MachineState { stack = V.empty
+                                             , program = V.fromList prog
+                                             , ip = 0
+                                             , zf = 0
+                                             , foreigns = M.fromList frgsDeclarations
+                                             , halted = False
+                                             , instsExecuted = 0
+                                             }
 
-execProg :: [Inst] -> IO (Either MachineError (MachineState, ()))
-execProg prog = runAction act $ initial prog
+execProg :: Address -> [Inst] -> [(String, ([Frame], Frame))] -> IO (Either MachineError (MachineState, ()))
+execProg entry prog frgsDeclarations = runAction (jmp entry >> act) $ initial prog frgsDeclarations 
     where act = do
               fetch >>= exec
               s <- get

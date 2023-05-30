@@ -12,15 +12,18 @@ import Engine
 deriving instance Generic Inst
 instance Binary Inst
 
+deriving instance Generic Frame
+instance Binary Frame
+
 main :: IO ()
 main = do
     args <- getArgs
 
     when (null args) $ putStrLn "fatal error: no input files" >> exitFailure
 
-    prog <- decodeFile $ head args
+    (entry, frgDecls, prog) <- decodeFile $ head args
 
-    res <- execProg prog
+    res <- execProg entry prog frgDecls
     case res of
         Right _ -> pure ()
         Left e -> putStrLn $ "ERROR: " ++ show e

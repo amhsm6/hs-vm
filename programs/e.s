@@ -1,3 +1,4 @@
+main:
     pushf 1 ; e number
     pushf 0 ; (n - 1)!
     pushf 1 ; n - 1

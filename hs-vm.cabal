@@ -7,7 +7,7 @@ maintainer:      ceb6
 build-type:      Simple
 
 common warnings
-    ghc-options: -Wall -Wextra -Wno-unused-do-bind
+    ghc-options: -Wall -Wextra -Wno-unused-do-bind -Wno-orphans
 
 library
     import:           warnings
@@ -16,6 +16,9 @@ library
 
     build-depends:    base ^>=4.16.4.0
                     , vector
+                    , containers
+                    , unix
+                    , libffi
 
     hs-source-dirs:   src
 
