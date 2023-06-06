@@ -6,17 +6,17 @@ loop:
     ; calculate n!
     swap 1
     pushf 1
-    addf
+    add
     swap 1
     dup 1
-    mulf
+    mul
 
     ; calculate new e
     pushf 1
     dup 1
-    divf
+    div
     dup 3
-    addf
+    add
 
     ; clean up
     swap 3
@@ -26,7 +26,7 @@ loop:
 
     dup 2
     pushf 2.718281
-    lef
+    le
     jz loop
 
     hlt

@@ -12,84 +12,84 @@ main:
     stb
 
     pushp 1
-    addp
+    add
 
     dup 0
     pushb 101  ; e
     stb
 
     pushp 1
-    addp
+    add
 
     dup 0
     pushb 108  ; l
     stb
 
     pushp 1
-    addp
+    add
 
     dup 0
     pushb 108  ; l
     stb
 
     pushp 1
-    addp
+    add
 
     dup 0
     pushb 111  ; o
     stb
 
     pushp 1
-    addp
+    add
 
     dup 0
     pushb 44   ; ,
     stb
 
     pushp 1
-    addp
+    add
 
     dup 0
     pushb 32   ; <space>
     stb
 
     pushp 1
-    addp
+    add
 
     dup 0
     pushb 87   ; W
     stb
 
     pushp 1
-    addp
+    add
 
     dup 0
     pushb 111  ; o
     stb
 
     pushp 1
-    addp
+    add
 
     dup 0
     pushb 114  ; r
     stb
 
     pushp 1
-    addp
+    add
 
     dup 0
     pushb 108  ; l
     stb
 
     pushp 1
-    addp
+    add
 
     dup 0
     pushb 100  ; d
     stb
 
     pushp 1
-    addp
+    add
 
     pushb 10   ; \n
     stb

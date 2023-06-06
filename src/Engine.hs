@@ -22,6 +22,40 @@ data Frame = FrameAddr Address
            | FrameByte Word8
            | FrameFloat Float
            | FramePtr Word
+           deriving (Ord, Eq)
+
+instance Num Frame where
+    (FrameAddr a) + (FrameAddr b) = FrameAddr $ a + b
+    (FrameInt a) + (FrameInt b) = FrameInt $ a + b
+    (FrameByte a) + (FrameByte b) = FrameByte $ a + b
+    (FrameFloat a) + (FrameFloat b) = FrameFloat $ a + b
+    (FramePtr a) + (FramePtr b) = FramePtr $ a + b
+
+    (FrameAddr a) * (FrameAddr b) = FrameAddr $ a * b
+    (FrameInt a) * (FrameInt b) = FrameInt $ a * b
+    (FrameByte a) * (FrameByte b) = FrameByte $ a * b
+    (FrameFloat a) * (FrameFloat b) = FrameFloat $ a * b
+    (FramePtr a) * (FramePtr b) = FramePtr $ a * b
+
+    negate (FrameAddr x) = FrameAddr $ -x
+    negate (FrameInt x) = FrameInt $ -x
+    negate (FrameByte x) = FrameByte $ -x
+    negate (FrameFloat x) = FrameFloat $ -x
+    negate (FramePtr x) = FramePtr $ -x
+
+    abs (FrameAddr x) = FrameAddr $ abs x
+    abs (FrameInt x) = FrameInt $ abs x
+    abs (FrameByte x) = FrameByte $ abs x
+    abs (FrameFloat x) = FrameFloat $ abs x
+    abs (FramePtr x) = FramePtr $ abs x
+
+    signum (FrameAddr x) = FrameAddr $ signum x
+    signum (FrameInt x) = FrameInt $ signum x
+    signum (FrameByte x) = FrameByte $ signum x
+    signum (FrameFloat x) = FrameFloat $ signum x
+    signum (FramePtr x) = FramePtr $ signum x
+
+    fromInteger = FrameInt
 
 instance Show Frame where
     show (FrameAddr x) = "#" ++ show x
@@ -197,31 +231,18 @@ data Inst = InstPushI Integer
 
           | InstPrint
 
-          | InstAddI
-          | InstSubI
-          | InstMulI
+          | InstAdd
+          | InstSub
+          | InstMul
           | InstDivI
-          | InstModI
-
-          | InstGtI
-          | InstGeI
-          | InstEqI
-          | InstLeI
-          | InstLtI
-
-          | InstAddF
-          | InstSubF
-          | InstMulF
+          | InstMod
           | InstDivF
 
-          | InstGtF
-          | InstGeF
-          | InstEqF
-          | InstLeF
-          | InstLtF
-
-          | InstAddP
-          | InstSubP
+          | InstGt
+          | InstGe
+          | InstEq
+          | InstLe
+          | InstLt
 
 exec :: Inst -> Action ()
 
@@ -292,20 +313,20 @@ exec InstHlt = hlt
 
 exec InstPrint = pop >>= liftIO . print >> next
 
-exec InstAddI = do
-    y <- popInt
-    x <- popInt
-    push $ FrameInt $ x + y
+exec InstAdd = do
+    y <- pop
+    x <- pop
+    push $ x + y
     next
-exec InstSubI = do
-    y <- popInt
-    x <- popInt
-    push $ FrameInt $ x - y
+exec InstSub = do
+    y <- pop
+    x <- pop
+    push $ x - y
     next
-exec InstMulI = do
-    y <- popInt
-    x <- popInt
-    push $ FrameInt $ x * y
+exec InstMul = do
+    y <- pop
+    x <- pop
+    push $ x * y
     next
 exec InstDivI = do
     y <- popInt
@@ -313,53 +334,11 @@ exec InstDivI = do
     x <- popInt
     push $ FrameInt $ x `div` y
     next
-exec InstModI = do
+exec InstMod = do
     y <- popInt
     when (y == 0) $ die DivByZeroError
     x <- popInt
     push $ FrameInt $ x `mod` y
-    next
-
-exec InstGtI = do
-    y <- popInt
-    x <- popInt
-    if x > y then sez else clz
-    next
-exec InstGeI = do
-    y <- popInt
-    x <- popInt
-    if x >= y then sez else clz
-    next
-exec InstEqI = do
-    y <- popInt
-    x <- popInt
-    if x == y then sez else clz
-    next
-exec InstLeI = do
-    y <- popInt
-    x <- popInt
-    if x <= y then sez else clz
-    next
-exec InstLtI = do
-    y <- popInt
-    x <- popInt
-    if x < y then sez else clz
-    next
-
-exec InstAddF = do
-    y <- popFloat
-    x <- popFloat
-    push $ FrameFloat $ x + y
-    next
-exec InstSubF = do
-    y <- popFloat
-    x <- popFloat
-    push $ FrameFloat $ x - y
-    next
-exec InstMulF = do
-    y <- popFloat
-    x <- popFloat
-    push $ FrameFloat $ x * y
     next
 exec InstDivF = do
     y <- popFloat
@@ -367,41 +346,30 @@ exec InstDivF = do
     push $ FrameFloat $ x / y
     next
 
-exec InstGtF = do
-    y <- popFloat
-    x <- popFloat
+exec InstGt = do
+    y <- pop
+    x <- pop
     if x > y then sez else clz
     next
-exec InstGeF = do
-    y <- popFloat
-    x <- popFloat
+exec InstGe = do
+    y <- pop
+    x <- pop
     if x >= y then sez else clz
     next
-exec InstEqF = do
-    y <- popFloat
-    x <- popFloat
+exec InstEq = do
+    y <- pop
+    x <- pop
     if x == y then sez else clz
     next
-exec InstLeF = do
-    y <- popFloat
-    x <- popFloat
+exec InstLe = do
+    y <- pop
+    x <- pop
     if x <= y then sez else clz
     next
-exec InstLtF = do
-    y <- popFloat
-    x <- popFloat
+exec InstLt = do
+    y <- pop
+    x <- pop
     if x < y then sez else clz
-    next
-
-exec InstAddP = do
-    y <- popPtr
-    x <- popPtr
-    push $ FramePtr $ x + y
-    next
-exec InstSubP = do
-    y <- popPtr
-    x <- popPtr
-    push $ FramePtr $ x - y
     next
 
 initial :: [Inst] -> [(String, ([Frame], Frame))] -> MachineState

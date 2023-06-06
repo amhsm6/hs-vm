@@ -133,31 +133,18 @@ instruction = foldl (<|>) empty $ map parseInst $
 
     , InstDef "print"  []                $ const $ simpleInst InstPrint
 
-    , InstDef "addi"   []                $ const $ simpleInst InstAddI
-    , InstDef "subi"   []                $ const $ simpleInst InstSubI
-    , InstDef "muli"   []                $ const $ simpleInst InstMulI
-    , InstDef "divi"   []                $ const $ simpleInst InstDivI
-    , InstDef "modi"   []                $ const $ simpleInst InstModI
+    , InstDef "add"   []                 $ const $ simpleInst InstAdd
+    , InstDef "sub"   []                 $ const $ simpleInst InstSub
+    , InstDef "mul"   []                 $ const $ simpleInst InstMul
+    , InstDef "idiv"  []                 $ const $ simpleInst InstDivI
+    , InstDef "mod"   []                 $ const $ simpleInst InstMod
+    , InstDef "div"   []                 $ const $ simpleInst InstDivF
 
-    , InstDef "gti"    []                $ const $ simpleInst InstGtI
-    , InstDef "gei"    []                $ const $ simpleInst InstGeI
-    , InstDef "eqi"    []                $ const $ simpleInst InstEqI
-    , InstDef "lei"    []                $ const $ simpleInst InstLeI
-    , InstDef "lti"    []                $ const $ simpleInst InstLtI
-
-    , InstDef "addf"   []                $ const $ simpleInst InstAddF
-    , InstDef "subf"   []                $ const $ simpleInst InstSubF
-    , InstDef "mulf"   []                $ const $ simpleInst InstMulF
-    , InstDef "divf"   []                $ const $ simpleInst InstDivF
-
-    , InstDef "gtf"    []                $ const $ simpleInst InstGtF
-    , InstDef "gef"    []                $ const $ simpleInst InstGeF
-    , InstDef "eqf"    []                $ const $ simpleInst InstEqF
-    , InstDef "lef"    []                $ const $ simpleInst InstLeF
-    , InstDef "ltf"    []                $ const $ simpleInst InstLtF
-
-    , InstDef "addp"   []                $ const $ simpleInst InstAddP
-    , InstDef "subp"   []                $ const $ simpleInst InstSubP
+    , InstDef "gt"    []                 $ const $ simpleInst InstGt
+    , InstDef "ge"    []                 $ const $ simpleInst InstGe
+    , InstDef "eq"    []                 $ const $ simpleInst InstEq
+    , InstDef "le"    []                 $ const $ simpleInst InstLe
+    , InstDef "lt"    []                 $ const $ simpleInst InstLt
     ]
 
 label :: Parser Token
