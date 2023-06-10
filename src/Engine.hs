@@ -25,35 +25,35 @@ data Frame = FrameAddr Address
            deriving (Ord, Eq)
 
 instance Num Frame where
-    (FrameAddr a) + (FrameAddr b) = FrameAddr $ a + b
     (FrameInt a) + (FrameInt b) = FrameInt $ a + b
     (FrameByte a) + (FrameByte b) = FrameByte $ a + b
     (FrameFloat a) + (FrameFloat b) = FrameFloat $ a + b
     (FramePtr a) + (FramePtr b) = FramePtr $ a + b
+    _ + _ = undefined
 
-    (FrameAddr a) * (FrameAddr b) = FrameAddr $ a * b
     (FrameInt a) * (FrameInt b) = FrameInt $ a * b
     (FrameByte a) * (FrameByte b) = FrameByte $ a * b
     (FrameFloat a) * (FrameFloat b) = FrameFloat $ a * b
     (FramePtr a) * (FramePtr b) = FramePtr $ a * b
+    _ * _ = undefined
 
-    negate (FrameAddr x) = FrameAddr $ -x
     negate (FrameInt x) = FrameInt $ -x
     negate (FrameByte x) = FrameByte $ -x
     negate (FrameFloat x) = FrameFloat $ -x
     negate (FramePtr x) = FramePtr $ -x
+    negate _ = undefined
 
-    abs (FrameAddr x) = FrameAddr $ abs x
     abs (FrameInt x) = FrameInt $ abs x
     abs (FrameByte x) = FrameByte $ abs x
     abs (FrameFloat x) = FrameFloat $ abs x
     abs (FramePtr x) = FramePtr $ abs x
+    abs _ = undefined
 
-    signum (FrameAddr x) = FrameAddr $ signum x
     signum (FrameInt x) = FrameInt $ signum x
     signum (FrameByte x) = FrameByte $ signum x
     signum (FrameFloat x) = FrameFloat $ signum x
     signum (FramePtr x) = FramePtr $ signum x
+    signum _ = undefined
 
     fromInteger = FrameInt
 
@@ -289,14 +289,14 @@ exec (InstForeign name) = do
             callForeign fn (reverse args) retType
             next
 
-exec InstLoadI = popPtr >>= liftIO . peek . wordPtrToPtr . WordPtr >>= push . FrameInt . (fromIntegral :: Int -> Integer) >> next
+exec InstLoadI = popPtr >>= liftIO . peek . wordPtrToPtr . WordPtr >>= push . FrameInt . (fromIntegral :: Int64 -> Integer) >> next
 exec InstLoadB = popPtr >>= liftIO . peek . wordPtrToPtr . WordPtr >>= push . FrameByte >> next
 exec InstLoadF = popPtr >>= liftIO . peek . wordPtrToPtr . WordPtr >>= push . FrameFloat >> next
 
 exec InstStoreI = do
     val <- popInt
     ptr <- popPtr
-    liftIO $ poke (wordPtrToPtr $ WordPtr ptr) (fromIntegral val :: Int)
+    liftIO $ poke (wordPtrToPtr $ WordPtr ptr) (fromIntegral val :: Int64)
     next
 exec InstStoreB = do
     val <- popByte
