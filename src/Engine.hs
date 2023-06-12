@@ -178,6 +178,13 @@ popPtr = pop >>= f
     where f (FramePtr x) = pure x
           f _ = die TypeError
 
+checkType :: Frame -> Frame -> Action ()
+checkType (FrameInt _) (FrameInt _) = pure ()
+checkType (FrameByte _) (FrameByte _) = pure ()
+checkType (FrameFloat _) (FrameFloat _) = pure ()
+checkType (FramePtr _) (FramePtr _) = pure ()
+checkType _ _ = die TypeError
+
 frameToArg :: Frame -> Arg
 frameToArg (FrameInt x) = argInt64 $ fromIntegral x
 frameToArg (FrameByte x) = argWord8 x
@@ -282,11 +289,12 @@ exec (InstForeign name) = do
         Just (argTypes, retType) -> do
             args <- forM (reverse argTypes) $ \t -> do
                 x <- pop
-                --TODO: t and x must match
+                checkType t x
                 pure $ frameToArg x
 
             fn <- liftIO $ dlsym Default name
             callForeign fn (reverse args) retType
+
             next
 
 exec InstLoadI = popPtr >>= liftIO . peek . wordPtrToPtr . WordPtr >>= push . FrameInt . (fromIntegral :: Int64 -> Integer) >> next
