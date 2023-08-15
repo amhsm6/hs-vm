@@ -58,14 +58,16 @@ data InstParam = ParamAddress Int
                | ParamByte Word8
                | ParamFloat Float
                | ParamPtr Word
-               | ParamString String
+               | ParamChar Char
+               | ParamLabel String
 
 data InstParamDef = AddressParamDef
                   | IntParamDef
                   | ByteParamDef
                   | FloatParamDef
                   | PtrParamDef
-                  | StringParamDef
+                  | CharParamDef
+                  | LabelParamDef
 
 data InstAdditionalInfo = InfoNothing
                         | InfoLabel String
@@ -85,7 +87,8 @@ parseParam IntParamDef = some (digit <|> char '-') >>= pure . ParamInt . read
 parseParam ByteParamDef = some digit >>= pure . ParamByte . read
 parseParam FloatParamDef = some (digit <|> char '-' <|> char '.') >>= pure . ParamFloat . read
 parseParam PtrParamDef = some digit >>= pure . ParamPtr . read
-parseParam StringParamDef = some (charF $ \c -> isAlphaNum c || c == '_') >>= pure . ParamString
+parseParam CharParamDef = ParamChar <$> (char '\'' *> charF (const True) <* char '\'')
+parseParam LabelParamDef = ParamLabel <$> some (charF $ \c -> isAlphaNum c || c == '_')
 
 parseInst :: InstDef -> Parser Token
 parseInst (InstDef name params constructor) = do
@@ -107,19 +110,20 @@ instruction = foldl (<|>) empty $ map parseInst $
     , InstDef "pushb"  [ByteParamDef]    $ \[ParamByte x] -> simpleInst $ InstPushB x
     , InstDef "pushf"  [FloatParamDef]   $ \[ParamFloat x] -> simpleInst $ InstPushF x
     , InstDef "pushp"  [PtrParamDef]     $ \[ParamPtr x] -> simpleInst $ InstPushP x
+    , InstDef "pushc"  [CharParamDef]    $ \[ParamChar x] -> simpleInst $ InstPushB $ fromIntegral $ ord x
 
     , InstDef "drop"   []                $ const $ simpleInst InstDrop
     , InstDef "dup"    [AddressParamDef] $ \[ParamAddress x] -> simpleInst $ InstDup x
     , InstDef "swap"   [AddressParamDef] $ \[ParamAddress x] -> simpleInst $ InstSwap x
 
-    , InstDef "jmp"    [StringParamDef]  $ \[ParamString x] -> labelInst x $ InstJmp 0
-    , InstDef "jz"     [StringParamDef]  $ \[ParamString x] -> labelInst x $ InstJmpZero 0
-    , InstDef "jnz"    [StringParamDef]  $ \[ParamString x] -> labelInst x $ InstJmpNotZero 0
+    , InstDef "jmp"    [LabelParamDef]  $ \[ParamLabel x] -> labelInst x $ InstJmp 0
+    , InstDef "jz"     [LabelParamDef]  $ \[ParamLabel x] -> labelInst x $ InstJmpZero 0
+    , InstDef "jnz"    [LabelParamDef]  $ \[ParamLabel x] -> labelInst x $ InstJmpNotZero 0
 
-    , InstDef "call"   [StringParamDef]  $ \[ParamString x] -> labelInst x $ InstCall 0
+    , InstDef "call"   [LabelParamDef]  $ \[ParamLabel x] -> labelInst x $ InstCall 0
     , InstDef "ret"    []                $ const $ simpleInst InstRet
 
-    , InstDef "ext"    [StringParamDef]  $ \[ParamString x] -> simpleInst $ InstForeign x
+    , InstDef "ext"    [LabelParamDef]  $ \[ParamLabel x] -> simpleInst $ InstForeign x
 
     , InstDef "ldi"    []                $ const $ simpleInst InstLoadI
     , InstDef "ldb"    []                $ const $ simpleInst InstLoadB

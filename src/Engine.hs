@@ -108,7 +108,7 @@ die err = Action $ \_ -> pure $ Left err
 
 fetch :: Action Inst
 fetch = get >>= \s -> let s' = s { instsExecuted = instsExecuted s + 1}
-                      in maybe (die IllegalInstAccess) (\x -> put s' >> pure x) $ program s V.!? ip s
+                      in maybe (die IllegalInstAccess) (\x -> put s' >> pure x) $ program s' V.!? ip s'
 
 next :: Action ()
 next = get >>= \s -> put $ s { ip = ip s + 1 }
@@ -148,7 +148,7 @@ pop = getStack >>= pop'
               | otherwise = putStack (V.init s) >> pure (V.last s)
 
 getStack :: Action (V.Vector Frame)
-getStack = get >>= pure . stack
+getStack = stack <$> get
 
 putStack :: V.Vector Frame -> Action ()
 putStack x = get >>= \s -> put $ s { stack = x }
@@ -283,7 +283,7 @@ exec (InstCall addr) = do
 exec InstRet = popAddr >>= jmp
 
 exec (InstForeign name) = do
-    foreigns <- get >>= pure . foreignFunctions
+    foreigns <- foreignFunctions <$> get
     case M.lookup name foreigns of
         Nothing -> die IllegalForeignCall
         Just (argTypes, retType) -> do
