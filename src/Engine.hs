@@ -2,18 +2,51 @@ module Engine where
 
 import Control.Monad
 import Control.Monad.IO.Class
-import System.Posix.DynamicLinker
-import Foreign
-import Foreign.LibFFI
 import qualified Data.Map as M
 import qualified Data.Vector as V
 import Numeric
+import System.Posix.DynamicLinker
+import Foreign
+import Foreign.LibFFI
 
 stackCapacity :: Int
 stackCapacity = 1024 
 
 executionLimit :: Int
 executionLimit = 1024
+
+newtype Action a = Action { runAction :: MachineState -> IO (Either MachineError (MachineState, a)) }
+
+instance Monad Action where
+    return = pure
+    (Action f) >>= g = Action $ \s -> f s >>= either (pure . Left) (\(s', x) -> runAction (g x) s')
+
+instance Applicative Action where
+    pure x = Action $ \s -> pure $ Right (s, x)
+    m1 <*> m2 = m1 >>= \f -> m2 >>= pure . f
+
+instance Functor Action where
+    fmap f m = m >>= pure . f
+
+instance MonadIO Action where   
+    liftIO io = Action $ \s -> io >>= pure . Right . (s,)
+
+data MachineState = MachineState { stack :: V.Vector Frame
+                                 , program :: V.Vector Inst
+                                 , ip :: Address
+                                 , zf :: Int
+                                 , foreignFunctions :: M.Map String ([Frame], Frame)
+                                 , halted :: Bool
+                                 , instsExecuted :: Int
+                                 }
+
+data MachineError = StackUnderflow
+                  | StackOverflow
+                  | DivByZeroError
+                  | IllegalInstAccess
+                  | TypeError
+                  | IllegalForeignCall
+                  deriving Show
 
 type Address = Int
 
@@ -63,39 +96,6 @@ instance Show Frame where
     show (FrameByte x) = show x
     show (FrameFloat x) = show x
     show (FramePtr x) = "0x" ++ showHex x ""
-
-data MachineState = MachineState { stack :: V.Vector Frame
-                                 , program :: V.Vector Inst
-                                 , ip :: Address
-                                 , zf :: Int
-                                 , foreignFunctions :: M.Map String ([Frame], Frame)
-                                 , halted :: Bool
-                                 , instsExecuted :: Int
-                                 }
-
-data MachineError = StackUnderflow
-                  | StackOverflow
-                  | DivByZeroError
-                  | IllegalInstAccess
-                  | TypeError
-                  | IllegalForeignCall
-                  deriving Show
-
-newtype Action a = Action { runAction :: MachineState -> IO (Either MachineError (MachineState, a)) }
-
-instance Monad Action where
-    return = pure
-    (Action f) >>= g = Action $ \s -> f s >>= \res -> case res of Right (s', x) -> runAction (g x) s'
-                                                                  Left e -> pure $ Left e
-instance Applicative Action where
-    pure x = Action $ \s -> pure $ Right (s, x)
-    a1 <*> a2 = a1 >>= \f -> a2 >>= pure . f
-
-instance Functor Action where
-    fmap f a = a >>= pure . f
-
-instance MonadIO Action where   
-    liftIO io = Action $ \s -> io >>= pure . Right . (s,)
 
 get :: Action MachineState
 get = Action $ \s -> pure $ Right (s, s)
